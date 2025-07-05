@@ -6,7 +6,7 @@ const rateLimit = require('express-rate-limit');
 require('dotenv').config();
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
 
 // Middleware
 app.use(helmet());
@@ -53,8 +53,8 @@ app.use('*', (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(🚀 Server running on port ${PORT});
-  console.log(📍 Environment: ${process.env.NODE_ENV || 'development'});
+  console.log('🚀 Server running on port ' + PORT);
+  console.log('📍 Environment: ' + (process.env.NODE_ENV || 'development'));
 });
 
 module.exports = app;
