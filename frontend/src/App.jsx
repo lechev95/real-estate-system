@@ -24,8 +24,9 @@
       
       <div className="success-message">
         🎉 Системата е готова за разработка!
-        <br />
-        <small>React + Vite + Node.js + Express</small>
+        <div className="tech-stack">
+          React + Vite + Node.js + Express
+        </div>
       </div>
     </div>
   )
