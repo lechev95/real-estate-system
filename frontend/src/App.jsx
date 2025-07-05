@@ -1,7 +1,7 @@
 ﻿function App() {
   return (
     <div className="container">
-      <div className="success-icon pulse">
+      <div className="success-icon">
         ✓
       </div>
       <h1 className="title">
@@ -14,15 +14,18 @@
       <div className="info-box">
         <div className="info-row">
           <span className="info-label">Frontend:</span>
-          <span className="info-value">http://localhost:3000</span>
+          <span className="info-value">localhost:3000</span>
         </div>
         <div className="info-row">
           <span className="info-label">Backend:</span>
-          <span className="info-value">http://localhost:3001</span>
+          <span className="info-value">localhost:3001</span>
         </div>
         <div className="info-row">
           <span className="info-label">Status:</span>
-          <span className="info-value">🟢 Online</span>
+          <span className="info-value status-online">
+            <span className="status-indicator"></span>
+            Online
+          </span>
         </div>
       </div>
       
