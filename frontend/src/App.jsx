@@ -1,6 +1,8 @@
-﻿function App() {
+﻿import './index.css'
+
+function App() {
   return (
-    <div className="container">
+    <div className="app">
       <div className="success-icon">
         ✓
       </div>
@@ -22,18 +24,14 @@
         </div>
         <div className="info-row">
           <span className="info-label">Status:</span>
-          <span className="info-value status-online">
-            <span className="status-indicator"></span>
-            Online
-          </span>
+          <span className="info-value">🟢 Online</span>
         </div>
       </div>
       
       <div className="success-message">
         🎉 Системата е готова за разработка!
-        <div className="tech-stack">
-          React + Vite + Node.js + Express
-        </div>
+        <br />
+        <small>React + Vite + Node.js + Express</small>
       </div>
     </div>
   )
