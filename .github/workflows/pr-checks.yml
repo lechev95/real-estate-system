@@ -1,0 +1,129 @@
+name: 🔍 Pull Request Checks
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  # 📋 PR Validation
+  pr-validation:
+    name: 📋 PR Validation
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+      
+    - name: 🔍 Check PR title format
+      uses: amannn/action-semantic-pull-request@v5
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        types: |
+          feat
+          fix
+          docs
+          style
+          refactor
+          test
+          chore
+          
+    - name: 📏 Check PR size
+      uses: pascalgn/size-label-action@v0.4.3
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        sizes: |
+          {
+            "0": "XS",
+            "20": "S", 
+            "50": "M",
+            "200": "L",
+            "800": "XL",
+            "2000": "XXL"
+          }
+
+  # 🎯 Changed Files Analysis
+  analyze-changes:
+    name: 🎯 Analyze Changes
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        
+    - name: 🔍 Get changed files
+      id: changed-files
+      uses: tj-actions/changed-files@v40
+      with:
+        files_yaml: |
+          frontend:
+            - 'src/**'
+            - 'public/**'
+            - 'package.json'
+          backend:
+            - 'server/**'
+            - 'api/**'
+          database:
+            - 'migrations/**'
+            - 'seeds/**'
+          docs:
+            - 'docs/**'
+            - '*.md'
+            
+    - name: 🏷️ Add labels based on changes
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const labels = [];
+          
+          if ('${{ steps.changed-files.outputs.frontend_any_changed }}' === 'true') {
+            labels.push('component/frontend');
+          }
+          if ('${{ steps.changed-files.outputs.backend_any_changed }}' === 'true') {
+            labels.push('component/backend');
+          }
+          if ('${{ steps.changed-files.outputs.database_any_changed }}' === 'true') {
+            labels.push('component/database');
+          }
+          if ('${{ steps.changed-files.outputs.docs_any_changed }}' === 'true') {
+            labels.push('type/documentation');
+          }
+          
+          if (labels.length > 0) {
+            github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: labels
+            });
+          }
+
+  # 🔄 Auto-assign reviewers
+  assign-reviewers:
+    name: 🔄 Auto-assign Reviewers
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 👥 Assign reviewers based on changes
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const reviewers = [];
+          const teamReviewers = [];
+          
+          // Add logic to assign reviewers based on changed files
+          // For now, assign the repo owner
+          reviewers.push('lechev95');
+          
+          if (reviewers.length > 0) {
+            github.rest.pulls.requestReviewers({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+              reviewers: reviewers,
+              team_reviewers: teamReviewers
+            });
+          }
