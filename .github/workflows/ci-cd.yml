@@ -127,11 +127,13 @@ jobs:
       run: npm ci
       
     - name: 🏗️ Build frontend
+      working-directory: ./frontend
       run: npm run build
       env:
         NODE_ENV: production
         
     - name: 📦 Build backend
+      working-directory: ./backend
       run: npm run build:server
       
     - name: 📤 Upload build artifacts
