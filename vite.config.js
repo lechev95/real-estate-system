@@ -10,6 +10,7 @@ export default defineConfig({
   },
   preview: {
     host: '0.0.0.0', 
+    allowedHosts: real-estate-crm-frontend.onrender.com,
     port: process.env.PORT || 3000
   }
 })
