@@ -1,0 +1,162 @@
+// This is your Prisma schema file
+// Learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            Int      @id @default(autoincrement())
+  email         String   @unique
+  passwordHash  String   @map("password_hash")
+  firstName     String   @map("first_name")
+  lastName      String   @map("last_name")
+  role          String   @default("agent") // 'agent', 'manager', 'admin'
+  phone         String?
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  assignedProperties Property[] @relation("AssignedAgent")
+  assignedBuyers     Buyer[]    @relation("AssignedAgent")
+  assignedSellers    Seller[]   @relation("AssignedAgent")
+  assignedTasks      Task[]     @relation("AssignedAgent")
+
+  @@map("users")
+}
+
+model Seller {
+  id                Int      @id @default(autoincrement())
+  firstName         String   @map("first_name")
+  lastName          String   @map("last_name")
+  phone             String
+  email             String?
+  status            String   @default("active") // 'active', 'inactive'
+  assignedAgentId   Int?     @map("assigned_agent_id")
+  notes             String?
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  assignedAgent User?      @relation("AssignedAgent", fields: [assignedAgentId], references: [id])
+  properties    Property[]
+  tasks         Task[]
+
+  @@map("sellers")
+}
+
+model Property {
+  id                     Int       @id @default(autoincrement())
+  propertyType           String    @map("property_type") // 'sale', 'rent', 'managed'
+  category               String    // 'apartment', 'house', 'office'
+  title                  String
+  description            String?
+  address                String
+  city                   String
+  district               String
+  area                   Int       // square meters
+  rooms                  Int
+  floor                  Int?
+  totalFloors            Int?      @map("total_floors")
+  yearBuilt              Int?      @map("year_built")
+  exposure               String?   // 'север', 'юг', 'изток', 'запад'
+  heating                String?
+  priceEur               Decimal?  @map("price_eur") @db.Decimal(10, 2)
+  pricePerSqm            Decimal?  @map("price_per_sqm") @db.Decimal(8, 2)
+  monthlyRentEur         Decimal?  @map("monthly_rent_eur") @db.Decimal(8, 2)
+  managementFeePercent   Decimal?  @map("management_fee_percent") @db.Decimal(5, 2)
+  rentalConditions       String?   @map("rental_conditions")
+  status                 String    @default("available") // 'available', 'sold', 'rented', 'managed'
+  viewings               Int       @default(0)
+  lastViewing            DateTime? @map("last_viewing") @db.Date
+  sellerId               Int?      @map("seller_id")
+  assignedAgentId        Int?      @map("assigned_agent_id")
+  images                 Json?     // array of image URLs
+  createdAt              DateTime  @default(now()) @map("created_at")
+  updatedAt              DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  seller         Seller? @relation(fields: [sellerId], references: [id])
+  assignedAgent  User?   @relation("AssignedAgent", fields: [assignedAgentId], references: [id])
+  tasks          Task[]
+  tenants        Tenant[]
+
+  @@map("properties")
+}
+
+model Buyer {
+  id                Int      @id @default(autoincrement())
+  firstName         String   @map("first_name")
+  lastName          String   @map("last_name")
+  phone             String
+  email             String?
+  budgetMin         Decimal? @map("budget_min") @db.Decimal(10, 2)
+  budgetMax         Decimal? @map("budget_max") @db.Decimal(10, 2)
+  preferredLocation String?  @map("preferred_location")
+  propertyType      String?  @map("property_type") // 'apartment', 'house', 'office'
+  roomsMin          Int?     @map("rooms_min")
+  roomsMax          Int?     @map("rooms_max")
+  status            String   @default("active") // 'active', 'converted', 'inactive'
+  source            String?  // 'website', 'referral', 'advertisement'
+  assignedAgentId   Int?     @map("assigned_agent_id")
+  notes             String?
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  assignedAgent User?  @relation("AssignedAgent", fields: [assignedAgentId], references: [id])
+  tasks         Task[]
+
+  @@map("buyers")
+}
+
+model Task {
+  id               Int       @id @default(autoincrement())
+  title            String
+  description      String?
+  dueDate          DateTime  @map("due_date") @db.Date
+  dueTime          DateTime  @map("due_time") @db.Time
+  priority         String    @default("medium") // 'urgent', 'high', 'medium', 'low'
+  status           String    @default("pending") // 'pending', 'completed', 'cancelled'
+  taskType         String?   @map("task_type") // 'follow_up', 'viewing', 'contract', 'payment'
+  buyerId          Int?      @map("buyer_id")
+  sellerId         Int?      @map("seller_id")
+  propertyId       Int?      @map("property_id")
+  assignedAgentId  Int?      @map("assigned_agent_id")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  buyer         Buyer?    @relation(fields: [buyerId], references: [id])
+  seller        Seller?   @relation(fields: [sellerId], references: [id])
+  property      Property? @relation(fields: [propertyId], references: [id])
+  assignedAgent User?     @relation("AssignedAgent", fields: [assignedAgentId], references: [id])
+
+  @@map("tasks")
+}
+
+model Tenant {
+  id           Int       @id @default(autoincrement())
+  firstName    String    @map("first_name")
+  lastName     String    @map("last_name")
+  phone        String
+  email        String?
+  propertyId   Int       @map("property_id")
+  contractStart DateTime? @map("contract_start") @db.Date
+  contractEnd   DateTime? @map("contract_end") @db.Date
+  deposit       Decimal?  @db.Decimal(8, 2)
+  monthlyRent   Decimal?  @map("monthly_rent") @db.Decimal(8, 2)
+  status        String    @default("active") // 'active', 'terminated'
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  property Property @relation(fields: [propertyId], references: [id])
+
+  @@map("tenants")
+}
