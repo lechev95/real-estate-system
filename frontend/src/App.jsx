@@ -46,7 +46,402 @@ const buyersAPI = {
 // Exchange rate
 const EUR_TO_BGN_RATE = 1.95583;
 
-// Beautiful Property Modal Component
+// Inline Styles for reliable rendering
+const styles = {
+  pageContainer: {
+    minHeight: '100vh',
+    backgroundColor: '#f8fafc',
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+  },
+  header: {
+    backgroundColor: 'white',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+    borderBottom: '1px solid #e5e7eb'
+  },
+  headerContent: {
+    maxWidth: '1200px',
+    margin: '0 auto',
+    padding: '0 1rem',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    height: '64px'
+  },
+  logo: {
+    fontSize: '1.5rem',
+    fontWeight: 'bold',
+    color: '#1f2937',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.5rem'
+  },
+  userInfo: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '1rem'
+  },
+  currencySelect: {
+    padding: '0.5rem 1rem',
+    border: '1px solid #d1d5db',
+    borderRadius: '0.5rem',
+    backgroundColor: 'white',
+    fontSize: '0.875rem'
+  },
+  nav: {
+    backgroundColor: 'white',
+    borderBottom: '1px solid #e5e7eb',
+    boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+  },
+  navContent: {
+    maxWidth: '1200px',
+    margin: '0 auto',
+    padding: '0 1rem',
+    display: 'flex',
+    gap: '2rem'
+  },
+  navButton: {
+    padding: '1rem 0',
+    border: 'none',
+    backgroundColor: 'transparent',
+    fontSize: '0.875rem',
+    fontWeight: '500',
+    cursor: 'pointer',
+    borderBottom: '2px solid transparent',
+    transition: 'all 0.2s'
+  },
+  navButtonActive: {
+    borderBottomColor: '#3b82f6',
+    color: '#3b82f6'
+  },
+  navButtonInactive: {
+    color: '#6b7280'
+  },
+  main: {
+    maxWidth: '1200px',
+    margin: '0 auto',
+    padding: '2rem 1rem'
+  },
+  sectionHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '2rem'
+  },
+  sectionTitle: {
+    fontSize: '2rem',
+    fontWeight: 'bold',
+    color: '#1f2937',
+    margin: 0
+  },
+  addButton: {
+    backgroundColor: '#3b82f6',
+    color: 'white',
+    border: 'none',
+    padding: '0.75rem 1.5rem',
+    borderRadius: '0.5rem',
+    fontSize: '0.875rem',
+    fontWeight: '600',
+    cursor: 'pointer',
+    transition: 'background-color 0.2s'
+  },
+  filterButtons: {
+    display: 'flex',
+    gap: '0.5rem',
+    marginBottom: '2rem',
+    flexWrap: 'wrap'
+  },
+  filterButton: {
+    padding: '0.5rem 1rem',
+    border: '1px solid #d1d5db',
+    borderRadius: '0.5rem',
+    backgroundColor: 'white',
+    fontSize: '0.875rem',
+    fontWeight: '500',
+    cursor: 'pointer',
+    transition: 'all 0.2s'
+  },
+  filterButtonActive: {
+    backgroundColor: '#3b82f6',
+    color: 'white',
+    borderColor: '#3b82f6'
+  },
+  grid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))',
+    gap: '1.5rem'
+  },
+  card: {
+    backgroundColor: 'white',
+    borderRadius: '0.75rem',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+    overflow: 'hidden',
+    transition: 'transform 0.2s, box-shadow 0.2s'
+  },
+  cardImage: {
+    height: '200px',
+    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+    position: 'relative',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  cardImageIcon: {
+    fontSize: '4rem',
+    color: 'white',
+    opacity: 0.7
+  },
+  statusBadge: {
+    position: 'absolute',
+    bottom: '1rem',
+    left: '1rem',
+    padding: '0.25rem 0.75rem',
+    borderRadius: '9999px',
+    fontSize: '0.75rem',
+    fontWeight: '600',
+    color: 'white'
+  },
+  cardContent: {
+    padding: '1.5rem'
+  },
+  cardTitle: {
+    fontSize: '1.25rem',
+    fontWeight: '600',
+    color: '#1f2937',
+    marginBottom: '0.5rem'
+  },
+  cardAddress: {
+    color: '#6b7280',
+    fontSize: '0.875rem',
+    marginBottom: '1rem'
+  },
+  priceContainer: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '1rem'
+  },
+  price: {
+    fontSize: '1.5rem',
+    fontWeight: 'bold',
+    color: '#059669'
+  },
+  priceSecondary: {
+    fontSize: '0.75rem',
+    color: '#6b7280'
+  },
+  details: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.25rem',
+    fontSize: '0.875rem',
+    color: '#6b7280'
+  },
+  cardActions: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: '1rem',
+    borderTop: '1px solid #f3f4f6'
+  },
+  actionButton: {
+    padding: '0.5rem 1rem',
+    border: 'none',
+    borderRadius: '0.375rem',
+    fontSize: '0.75rem',
+    fontWeight: '500',
+    cursor: 'pointer',
+    transition: 'background-color 0.2s'
+  },
+  editButton: {
+    backgroundColor: '#3b82f6',
+    color: 'white'
+  },
+  deleteButton: {
+    backgroundColor: '#ef4444',
+    color: 'white'
+  },
+  modal: {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1000,
+    padding: '1rem'
+  },
+  modalContent: {
+    backgroundColor: 'white',
+    borderRadius: '0.75rem',
+    maxWidth: '800px',
+    width: '100%',
+    maxHeight: '90vh',
+    overflow: 'auto'
+  },
+  modalHeader: {
+    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+    color: 'white',
+    padding: '1.5rem',
+    borderRadius: '0.75rem 0.75rem 0 0',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center'
+  },
+  modalTitle: {
+    fontSize: '1.5rem',
+    fontWeight: 'bold',
+    margin: 0
+  },
+  closeButton: {
+    background: 'none',
+    border: 'none',
+    color: 'white',
+    fontSize: '1.5rem',
+    cursor: 'pointer',
+    padding: '0.5rem',
+    borderRadius: '50%',
+    width: '2.5rem',
+    height: '2.5rem',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  modalBody: {
+    padding: '2rem'
+  },
+  form: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '1rem'
+  },
+  formGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
+    gap: '1rem'
+  },
+  formGroup: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.5rem'
+  },
+  label: {
+    fontSize: '0.875rem',
+    fontWeight: '600',
+    color: '#374151'
+  },
+  input: {
+    padding: '0.75rem',
+    border: '1px solid #d1d5db',
+    borderRadius: '0.5rem',
+    fontSize: '0.875rem',
+    transition: 'border-color 0.2s'
+  },
+  textarea: {
+    padding: '0.75rem',
+    border: '1px solid #d1d5db',
+    borderRadius: '0.5rem',
+    fontSize: '0.875rem',
+    resize: 'vertical',
+    minHeight: '100px'
+  },
+  select: {
+    padding: '0.75rem',
+    border: '1px solid #d1d5db',
+    borderRadius: '0.5rem',
+    fontSize: '0.875rem',
+    backgroundColor: 'white'
+  },
+  modalActions: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    gap: '1rem',
+    paddingTop: '1.5rem',
+    borderTop: '1px solid #f3f4f6'
+  },
+  cancelButton: {
+    padding: '0.75rem 1.5rem',
+    border: '1px solid #d1d5db',
+    borderRadius: '0.5rem',
+    backgroundColor: 'white',
+    color: '#374151',
+    fontSize: '0.875rem',
+    fontWeight: '500',
+    cursor: 'pointer'
+  },
+  submitButton: {
+    padding: '0.75rem 1.5rem',
+    border: 'none',
+    borderRadius: '0.5rem',
+    backgroundColor: '#3b82f6',
+    color: 'white',
+    fontSize: '0.875rem',
+    fontWeight: '500',
+    cursor: 'pointer'
+  },
+  emptyState: {
+    textAlign: 'center',
+    padding: '4rem 2rem',
+    color: '#6b7280'
+  },
+  emptyIcon: {
+    fontSize: '4rem',
+    marginBottom: '1rem'
+  },
+  emptyTitle: {
+    fontSize: '1.25rem',
+    fontWeight: '600',
+    marginBottom: '0.5rem',
+    color: '#374151'
+  },
+  loadingOverlay: {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1000
+  },
+  loadingContent: {
+    backgroundColor: 'white',
+    padding: '2rem',
+    borderRadius: '0.75rem',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '1rem'
+  },
+  spinner: {
+    width: '2rem',
+    height: '2rem',
+    border: '2px solid #f3f4f6',
+    borderTopColor: '#3b82f6',
+    borderRadius: '50%',
+    animation: 'spin 1s linear infinite'
+  },
+  errorAlert: {
+    backgroundColor: '#fef2f2',
+    border: '1px solid #fecaca',
+    borderRadius: '0.5rem',
+    padding: '1rem',
+    marginBottom: '1rem',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center'
+  },
+  errorText: {
+    color: '#dc2626',
+    fontSize: '0.875rem',
+    fontWeight: '500'
+  }
+};
+
+// Property Modal Component
 const PropertyModal = ({ show, onClose, onSave, property = null, isEdit = false }) => {
   const [formData, setFormData] = useState({
     title: '',
@@ -147,292 +542,257 @@ const PropertyModal = ({ show, onClose, onSave, property = null, isEdit = false 
   if (!show) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
-        <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-6 rounded-t-xl">
-          <div className="flex justify-between items-center">
-            <h2 className="text-2xl font-bold">
+    <>
+      <style>
+        {`
+          @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+          }
+        `}
+      </style>
+      <div style={styles.modal}>
+        <div style={styles.modalContent}>
+          <div style={styles.modalHeader}>
+            <h2 style={styles.modalTitle}>
               {isEdit ? '✏️ Редактирай имот' : '🏠 Добави нов имот'}
             </h2>
-            <button 
-              onClick={onClose} 
-              className="text-white hover:text-gray-200 text-3xl font-bold w-10 h-10 flex items-center justify-center rounded-full hover:bg-white hover:bg-opacity-20"
-            >
+            <button onClick={onClose} style={styles.closeButton}>
               ×
             </button>
           </div>
-        </div>
 
-        <div className="p-8">
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              <div className="md:col-span-2">
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  📝 Заглавие *
-                </label>
-                <input
-                  type="text"
-                  value={formData.title}
-                  onChange={(e) => setFormData({...formData, title: e.target.value})}
-                  className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
-                  placeholder="напр. Тристаен апартамент в Лозенец"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  🏷️ Тип имот *
-                </label>
-                <select
-                  value={formData.propertyType}
-                  onChange={(e) => setFormData({...formData, propertyType: e.target.value})}
-                  className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
-                >
-                  <option value="sale">💰 Продажба</option>
-                  <option value="rent">🏠 Наем</option>
-                  <option value="managed">📋 Управляван</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  🏢 Категория *
-                </label>
-                <select
-                  value={formData.category}
-                  onChange={(e) => setFormData({...formData, category: e.target.value})}
-                  className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
-                >
-                  <option value="apartment">🏠 Апартамент</option>
-                  <option value="house">🏡 Къща</option>
-                  <option value="office">🏢 Офис</option>
-                  <option value="commercial">🏪 Търговски</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  🌍 Град *
-                </label>
-                <input
-                  type="text"
-                  value={formData.city}
-                  onChange={(e) => setFormData({...formData, city: e.target.value})}
-                  className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  📍 Район
-                </label>
-                <input
-                  type="text"
-                  value={formData.district}
-                  onChange={(e) => setFormData({...formData, district: e.target.value})}
-                  className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
-                  placeholder="напр. Лозенец, Център"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  📐 Квадратура (кв.м) *
-                </label>
-                <input
-                  type="number"
-                  value={formData.area}
-                  onChange={(e) => setFormData({...formData, area: e.target.value})}
-                  className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
-                  required
-                  min="1"
-                  placeholder="100"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  🚪 Брой стаи *
-                </label>
-                <input
-                  type="number"
-                  value={formData.rooms}
-                  onChange={(e) => setFormData({...formData, rooms: e.target.value})}
-                  className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
-                  required
-                  min="1"
-                  placeholder="3"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  🏗️ Етаж
-                </label>
-                <input
-                  type="number"
-                  value={formData.floor}
-                  onChange={(e) => setFormData({...formData, floor: e.target.value})}
-                  className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
-                  placeholder="4"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  🏢 Общо етажи
-                </label>
-                <input
-                  type="number"
-                  value={formData.totalFloors}
-                  onChange={(e) => setFormData({...formData, totalFloors: e.target.value})}
-                  className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
-                  placeholder="6"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  📅 Година на строеж
-                </label>
-                <input
-                  type="number"
-                  value={formData.yearBuilt}
-                  onChange={(e) => setFormData({...formData, yearBuilt: e.target.value})}
-                  className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
-                  min="1900"
-                  max={new Date().getFullYear()}
-                  placeholder="2010"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  🧭 Изложение
-                </label>
-                <select
-                  value={formData.exposure}
-                  onChange={(e) => setFormData({...formData, exposure: e.target.value})}
-                  className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
-                >
-                  <option value="">Изберете</option>
-                  <option value="Север">🧊 Север</option>
-                  <option value="Юг">☀️ Юг</option>
-                  <option value="Изток">🌅 Изток</option>
-                  <option value="Запад">🌇 Запад</option>
-                  <option value="Югоизток">🌤️ Югоизток</option>
-                  <option value="Югозапад">🌅 Югозапад</option>
-                  <option value="Североизток">❄️ Североизток</option>
-                  <option value="Северозапад">🌨️ Северозапад</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  🔥 Отопление
-                </label>
-                <select
-                  value={formData.heating}
-                  onChange={(e) => setFormData({...formData, heating: e.target.value})}
-                  className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
-                >
-                  <option value="">Изберете</option>
-                  <option value="Централно парно">🏭 Централно парно</option>
-                  <option value="Газово">🔥 Газово</option>
-                  <option value="Електрическо">⚡ Електрическо</option>
-                  <option value="Климатици">❄️ Климатици</option>
-                  <option value="Печка">🪵 Печка</option>
-                  <option value="Няма">❌ Няма</option>
-                </select>
-              </div>
-
-              {formData.propertyType === 'sale' && (
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    💰 Цена (EUR) *
-                  </label>
+          <div style={styles.modalBody}>
+            <form onSubmit={handleSubmit} style={styles.form}>
+              <div style={styles.formGrid}>
+                <div style={{...styles.formGroup, gridColumn: 'span 2'}}>
+                  <label style={styles.label}>Заглавие *</label>
                   <input
-                    type="number"
-                    value={formData.priceEur}
-                    onChange={(e) => setFormData({...formData, priceEur: e.target.value})}
-                    className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
-                    required={formData.propertyType === 'sale'}
-                    min="0"
-                    placeholder="165000"
+                    type="text"
+                    value={formData.title}
+                    onChange={(e) => setFormData({...formData, title: e.target.value})}
+                    style={styles.input}
+                    placeholder="напр. Тристаен апартамент в Лозенец"
+                    required
                   />
                 </div>
-              )}
 
-              {(formData.propertyType === 'rent' || formData.propertyType === 'managed') && (
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    🏠 Месечен наем (EUR) *
-                  </label>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Тип имот *</label>
+                  <select
+                    value={formData.propertyType}
+                    onChange={(e) => setFormData({...formData, propertyType: e.target.value})}
+                    style={styles.select}
+                  >
+                    <option value="sale">Продажба</option>
+                    <option value="rent">Наем</option>
+                    <option value="managed">Управляван</option>
+                  </select>
+                </div>
+
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Категория *</label>
+                  <select
+                    value={formData.category}
+                    onChange={(e) => setFormData({...formData, category: e.target.value})}
+                    style={styles.select}
+                  >
+                    <option value="apartment">Апартамент</option>
+                    <option value="house">Къща</option>
+                    <option value="office">Офис</option>
+                    <option value="commercial">Търговски</option>
+                  </select>
+                </div>
+
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Град *</label>
                   <input
-                    type="number"
-                    value={formData.monthlyRentEur}
-                    onChange={(e) => setFormData({...formData, monthlyRentEur: e.target.value})}
-                    className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
-                    required={formData.propertyType !== 'sale'}
-                    min="0"
-                    placeholder="600"
+                    type="text"
+                    value={formData.city}
+                    onChange={(e) => setFormData({...formData, city: e.target.value})}
+                    style={styles.input}
+                    required
                   />
                 </div>
-              )}
-            </div>
 
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                🗺️ Адрес *
-              </label>
-              <input
-                type="text"
-                value={formData.address}
-                onChange={(e) => setFormData({...formData, address: e.target.value})}
-                className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
-                required
-                placeholder="ул. Фритьоф Нансен 25"
-              />
-            </div>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Район</label>
+                  <input
+                    type="text"
+                    value={formData.district}
+                    onChange={(e) => setFormData({...formData, district: e.target.value})}
+                    style={styles.input}
+                    placeholder="напр. Лозенец, Център"
+                  />
+                </div>
 
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                📝 Описание
-              </label>
-              <textarea
-                value={formData.description}
-                onChange={(e) => setFormData({...formData, description: e.target.value})}
-                className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
-                rows="3"
-                placeholder="Светъл тристаен апартамент с две тераси и паркомясто..."
-              />
-            </div>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Квадратура (кв.м) *</label>
+                  <input
+                    type="number"
+                    value={formData.area}
+                    onChange={(e) => setFormData({...formData, area: e.target.value})}
+                    style={styles.input}
+                    required
+                    min="1"
+                    placeholder="100"
+                  />
+                </div>
 
-            <div className="flex justify-end space-x-4 pt-6 border-t border-gray-200">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50 hover:border-gray-400 transition-all"
-              >
-                ❌ Отказ
-              </button>
-              <button
-                type="submit"
-                className="px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg font-semibold hover:from-blue-700 hover:to-purple-700 transform hover:scale-105 transition-all shadow-lg"
-              >
-                {isEdit ? '💾 Обнови' : '✨ Създай'}
-              </button>
-            </div>
-          </form>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Брой стаи *</label>
+                  <input
+                    type="number"
+                    value={formData.rooms}
+                    onChange={(e) => setFormData({...formData, rooms: e.target.value})}
+                    style={styles.input}
+                    required
+                    min="1"
+                    placeholder="3"
+                  />
+                </div>
+
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Етаж</label>
+                  <input
+                    type="number"
+                    value={formData.floor}
+                    onChange={(e) => setFormData({...formData, floor: e.target.value})}
+                    style={styles.input}
+                    placeholder="4"
+                  />
+                </div>
+
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Общо етажи</label>
+                  <input
+                    type="number"
+                    value={formData.totalFloors}
+                    onChange={(e) => setFormData({...formData, totalFloors: e.target.value})}
+                    style={styles.input}
+                    placeholder="6"
+                  />
+                </div>
+
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Година на строеж</label>
+                  <input
+                    type="number"
+                    value={formData.yearBuilt}
+                    onChange={(e) => setFormData({...formData, yearBuilt: e.target.value})}
+                    style={styles.input}
+                    min="1900"
+                    max={new Date().getFullYear()}
+                    placeholder="2010"
+                  />
+                </div>
+
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Изложение</label>
+                  <select
+                    value={formData.exposure}
+                    onChange={(e) => setFormData({...formData, exposure: e.target.value})}
+                    style={styles.select}
+                  >
+                    <option value="">Изберете</option>
+                    <option value="Север">Север</option>
+                    <option value="Юг">Юг</option>
+                    <option value="Изток">Изток</option>
+                    <option value="Запад">Запад</option>
+                    <option value="Югоизток">Югоизток</option>
+                    <option value="Югозапад">Югозапад</option>
+                    <option value="Североизток">Североизток</option>
+                    <option value="Северозапад">Северозапад</option>
+                  </select>
+                </div>
+
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Отопление</label>
+                  <select
+                    value={formData.heating}
+                    onChange={(e) => setFormData({...formData, heating: e.target.value})}
+                    style={styles.select}
+                  >
+                    <option value="">Изберете</option>
+                    <option value="Централно парно">Централно парно</option>
+                    <option value="Газово">Газово</option>
+                    <option value="Електрическо">Електрическо</option>
+                    <option value="Климатици">Климатици</option>
+                    <option value="Печка">Печка</option>
+                    <option value="Няма">Няма</option>
+                  </select>
+                </div>
+
+                {formData.propertyType === 'sale' && (
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>Цена (EUR) *</label>
+                    <input
+                      type="number"
+                      value={formData.priceEur}
+                      onChange={(e) => setFormData({...formData, priceEur: e.target.value})}
+                      style={styles.input}
+                      required={formData.propertyType === 'sale'}
+                      min="0"
+                      placeholder="165000"
+                    />
+                  </div>
+                )}
+
+                {(formData.propertyType === 'rent' || formData.propertyType === 'managed') && (
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>Месечен наем (EUR) *</label>
+                    <input
+                      type="number"
+                      value={formData.monthlyRentEur}
+                      onChange={(e) => setFormData({...formData, monthlyRentEur: e.target.value})}
+                      style={styles.input}
+                      required={formData.propertyType !== 'sale'}
+                      min="0"
+                      placeholder="600"
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Адрес *</label>
+                <input
+                  type="text"
+                  value={formData.address}
+                  onChange={(e) => setFormData({...formData, address: e.target.value})}
+                  style={styles.input}
+                  required
+                  placeholder="ул. Фритьоф Нансен 25"
+                />
+              </div>
+
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Описание</label>
+                <textarea
+                  value={formData.description}
+                  onChange={(e) => setFormData({...formData, description: e.target.value})}
+                  style={styles.textarea}
+                  placeholder="Светъл тристаен апартамент с две тераси и паркомясто..."
+                />
+              </div>
+
+              <div style={styles.modalActions}>
+                <button type="button" onClick={onClose} style={styles.cancelButton}>
+                  Отказ
+                </button>
+                <button type="submit" style={styles.submitButton}>
+                  {isEdit ? 'Обнови' : 'Създай'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 };
 
-// Beautiful Buyer Modal Component
+// Buyer Modal Component
 const BuyerModal = ({ show, onClose, onSave, buyer = null, isEdit = false }) => {
   const [formData, setFormData] = useState({
     firstName: '',
@@ -505,203 +865,158 @@ const BuyerModal = ({ show, onClose, onSave, buyer = null, isEdit = false }) => 
   if (!show) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
-        <div className="bg-gradient-to-r from-green-600 to-blue-600 text-white p-6 rounded-t-xl">
-          <div className="flex justify-between items-center">
-            <h2 className="text-2xl font-bold">
-              {isEdit ? '✏️ Редактирай купувач' : '👤 Добави нов купувач'}
-            </h2>
-            <button 
-              onClick={onClose} 
-              className="text-white hover:text-gray-200 text-3xl font-bold w-10 h-10 flex items-center justify-center rounded-full hover:bg-white hover:bg-opacity-20"
-            >
-              ×
-            </button>
-          </div>
+    <div style={styles.modal}>
+      <div style={styles.modalContent}>
+        <div style={{...styles.modalHeader, background: 'linear-gradient(135deg, #10b981 0%, #3b82f6 100%)'}}>
+          <h2 style={styles.modalTitle}>
+            {isEdit ? '✏️ Редактирай купувач' : '👤 Добави нов купувач'}
+          </h2>
+          <button onClick={onClose} style={styles.closeButton}>
+            ×
+          </button>
         </div>
 
-        <div className="p-8">
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  👤 Име *
-                </label>
+        <div style={styles.modalBody}>
+          <form onSubmit={handleSubmit} style={styles.form}>
+            <div style={styles.formGrid}>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Име *</label>
                 <input
                   type="text"
                   value={formData.firstName}
                   onChange={(e) => setFormData({...formData, firstName: e.target.value})}
-                  className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:border-green-500 focus:ring-2 focus:ring-green-200 transition-all"
+                  style={styles.input}
                   placeholder="Мария"
                   required
                 />
               </div>
 
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  👥 Фамилия *
-                </label>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Фамилия *</label>
                 <input
                   type="text"
                   value={formData.lastName}
                   onChange={(e) => setFormData({...formData, lastName: e.target.value})}
-                  className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:border-green-500 focus:ring-2 focus:ring-green-200 transition-all"
+                  style={styles.input}
                   placeholder="Стоянова"
                   required
                 />
               </div>
 
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  📞 Телефон *
-                </label>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Телефон *</label>
                 <input
                   type="tel"
                   value={formData.phone}
                   onChange={(e) => setFormData({...formData, phone: e.target.value})}
-                  className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:border-green-500 focus:ring-2 focus:ring-green-200 transition-all"
+                  style={styles.input}
                   placeholder="+359 889 444 555"
                   required
                 />
               </div>
 
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  ✉️ Email
-                </label>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Email</label>
                 <input
                   type="email"
                   value={formData.email}
                   onChange={(e) => setFormData({...formData, email: e.target.value})}
-                  className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:border-green-500 focus:ring-2 focus:ring-green-200 transition-all"
+                  style={styles.input}
                   placeholder="maria@gmail.com"
                 />
               </div>
 
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  💰 Минимален бюджет (EUR)
-                </label>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Минимален бюджет (EUR)</label>
                 <input
                   type="number"
                   value={formData.budgetMin}
                   onChange={(e) => setFormData({...formData, budgetMin: e.target.value})}
-                  className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:border-green-500 focus:ring-2 focus:ring-green-200 transition-all"
+                  style={styles.input}
                   min="0"
                   placeholder="100000"
                 />
               </div>
 
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  💎 Максимален бюджет (EUR)
-                </label>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Максимален бюджет (EUR)</label>
                 <input
                   type="number"
                   value={formData.budgetMax}
                   onChange={(e) => setFormData({...formData, budgetMax: e.target.value})}
-                  className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:border-green-500 focus:ring-2 focus:ring-green-200 transition-all"
+                  style={styles.input}
                   min="0"
                   placeholder="200000"
                 />
               </div>
 
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  🏠 Предпочитан тип имот
-                </label>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Предпочитан тип имот</label>
                 <select
                   value={formData.preferredPropertyType}
                   onChange={(e) => setFormData({...formData, preferredPropertyType: e.target.value})}
-                  className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:border-green-500 focus:ring-2 focus:ring-green-200 transition-all"
+                  style={styles.select}
                 >
-                  <option value="any">🎯 Всички</option>
-                  <option value="sale">💰 Продажба</option>
-                  <option value="rent">🏠 Наем</option>
+                  <option value="any">Всички</option>
+                  <option value="sale">Продажба</option>
+                  <option value="rent">Наем</option>
                 </select>
               </div>
 
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  🚪 Предпочитан брой стаи
-                </label>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Предпочитан брой стаи</label>
                 <input
                   type="number"
                   value={formData.preferredRooms}
                   onChange={(e) => setFormData({...formData, preferredRooms: e.target.value})}
-                  className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:border-green-500 focus:ring-2 focus:ring-green-200 transition-all"
+                  style={styles.input}
                   min="1"
                   placeholder="3"
                 />
               </div>
 
-              <div className="md:col-span-2">
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  🎯 Статус
-                </label>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  {[
-                    { value: 'potential', label: '🔮 Потенциален', color: 'yellow' },
-                    { value: 'active', label: '🔥 Активен', color: 'green' },
-                    { value: 'inactive', label: '😴 Неактивен', color: 'gray' },
-                    { value: 'converted', label: '🎉 Клиент', color: 'blue' }
-                  ].map((status) => (
-                    <label key={status.value} className="flex items-center space-x-2 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="status"
-                        value={status.value}
-                        checked={formData.status === status.value}
-                        onChange={(e) => setFormData({...formData, status: e.target.value})}
-                        className="text-blue-600 focus:ring-blue-500 focus:ring-2"
-                      />
-                      <span className="text-sm font-medium">{status.label}</span>
-                    </label>
-                  ))}
-                </div>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Статус</label>
+                <select
+                  value={formData.status}
+                  onChange={(e) => setFormData({...formData, status: e.target.value})}
+                  style={styles.select}
+                >
+                  <option value="potential">Потенциален</option>
+                  <option value="active">Активен</option>
+                  <option value="inactive">Неактивен</option>
+                  <option value="converted">Клиент</option>
+                </select>
               </div>
 
-              <div className="md:col-span-2">
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  📍 Предпочитани райони (разделени със запетая)
-                </label>
+              <div style={{...styles.formGroup, gridColumn: 'span 2'}}>
+                <label style={styles.label}>Предпочитани райони (разделени със запетая)</label>
                 <input
                   type="text"
                   value={formData.preferredAreas}
                   onChange={(e) => setFormData({...formData, preferredAreas: e.target.value})}
-                  className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:border-green-500 focus:ring-2 focus:ring-green-200 transition-all"
+                  style={styles.input}
                   placeholder="Лозенец, Център, Витоша"
                 />
               </div>
 
-              <div className="md:col-span-2">
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  📝 Бележки
-                </label>
+              <div style={{...styles.formGroup, gridColumn: 'span 2'}}>
+                <label style={styles.label}>Бележки</label>
                 <textarea
                   value={formData.notes}
                   onChange={(e) => setFormData({...formData, notes: e.target.value})}
-                  className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:border-green-500 focus:ring-2 focus:ring-green-200 transition-all"
-                  rows="3"
+                  style={styles.textarea}
                   placeholder="Допълнителна информация за купувача..."
                 />
               </div>
             </div>
 
-            <div className="flex justify-end space-x-4 pt-6 border-t border-gray-200">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50 hover:border-gray-400 transition-all"
-              >
-                ❌ Отказ
+            <div style={styles.modalActions}>
+              <button type="button" onClick={onClose} style={styles.cancelButton}>
+                Отказ
               </button>
-              <button
-                type="submit"
-                className="px-6 py-3 bg-gradient-to-r from-green-600 to-blue-600 text-white rounded-lg font-semibold hover:from-green-700 hover:to-blue-700 transform hover:scale-105 transition-all shadow-lg"
-              >
-                {isEdit ? '💾 Обнови' : '✨ Създай'}
+              <button type="submit" style={styles.submitButton}>
+                {isEdit ? 'Обнови' : 'Създай'}
               </button>
             </div>
           </form>
@@ -870,6 +1185,46 @@ const App = () => {
     return properties.filter(property => property.propertyType === propertyFilter);
   };
 
+  const getStatusBadgeStyle = (status) => {
+    const baseStyle = {...styles.statusBadge};
+    switch(status) {
+      case 'available':
+        return {...baseStyle, backgroundColor: '#10b981'};
+      case 'rented':
+        return {...baseStyle, backgroundColor: '#f59e0b'};
+      case 'managed':
+        return {...baseStyle, backgroundColor: '#3b82f6'};
+      default:
+        return {...baseStyle, backgroundColor: '#6b7280'};
+    }
+  };
+
+  const getBuyerStatusBadge = (status) => {
+    const colors = {
+      active: '#10b981',
+      potential: '#f59e0b',
+      converted: '#3b82f6',
+      inactive: '#6b7280'
+    };
+    
+    const labels = {
+      active: 'Активен',
+      potential: 'Потенциален', 
+      converted: 'Клиент',
+      inactive: 'Неактивен'
+    };
+
+    return {
+      backgroundColor: colors[status] || colors.inactive,
+      color: 'white',
+      padding: '0.25rem 0.75rem',
+      borderRadius: '9999px',
+      fontSize: '0.75rem',
+      fontWeight: '600',
+      display: 'inline-block'
+    };
+  };
+
   const openEditPropertyModal = (property) => {
     setEditingProperty(property);
     setShowPropertyModal(true);
@@ -881,248 +1236,198 @@ const App = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
-      {/* Beautiful Header */}
-      <header className="bg-white shadow-lg border-b border-gray-100">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center">
-              <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-2 rounded-lg mr-3">
-                🏠
-              </div>
-              <h1 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                Real Estate CRM
-              </h1>
-            </div>
+    <div style={styles.pageContainer}>
+      {/* Header */}
+      <header style={styles.header}>
+        <div style={styles.headerContent}>
+          <div style={styles.logo}>
+            <span>🏠</span>
+            <span>Real Estate CRM</span>
+          </div>
 
-            <div className="flex items-center space-x-4">
-              <div className="relative">
-                <select
-                  value={currency}
-                  onChange={(e) => setCurrency(e.target.value)}
-                  className="bg-gradient-to-r from-blue-500 to-purple-500 text-white border-0 rounded-lg px-4 py-2 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-300 cursor-pointer"
-                >
-                  <option value="EUR" className="text-gray-800">💶 EUR (1.00)</option>
-                  <option value="BGN" className="text-gray-800">💴 BGN ({EUR_TO_BGN_RATE})</option>
-                </select>
-              </div>
+          <div style={styles.userInfo}>
+            <select
+              value={currency}
+              onChange={(e) => setCurrency(e.target.value)}
+              style={styles.currencySelect}
+            >
+              <option value="EUR">EUR (1.00)</option>
+              <option value="BGN">BGN ({EUR_TO_BGN_RATE})</option>
+            </select>
 
-              <div className="flex items-center space-x-2 bg-gradient-to-r from-green-500 to-blue-500 text-white px-4 py-2 rounded-lg">
-                <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center">
-                  👩‍💼
-                </div>
-                <div className="text-sm">
-                  <div className="font-semibold">Мария Иванова</div>
-                  <div className="text-green-100">Агент</div>
-                </div>
-              </div>
+            <div style={{fontSize: '0.875rem', color: '#374151'}}>
+              <div style={{fontWeight: '600'}}>Мария Иванова</div>
+              <div style={{color: '#6b7280'}}>Агент</div>
             </div>
           </div>
         </div>
       </header>
 
-      {/* Beautiful Navigation */}
-      <nav className="bg-white shadow-md border-b border-gray-100">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex space-x-1">
-            {[
-              { id: 'properties', label: 'Имоти', icon: '🏠', color: 'blue' },
-              { id: 'buyers', label: 'Купувачи', icon: '👥', color: 'green' },
-              { id: 'sellers', label: 'Продавачи', icon: '🏪', color: 'purple' },
-              { id: 'tasks', label: 'Задачи', icon: '📅', color: 'orange' }
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setCurrentPage(tab.id)}
-                className={`flex items-center space-x-2 py-4 px-6 font-medium text-sm transition-all duration-200 border-b-3 ${
-                  currentPage === tab.id
-                    ? `border-${tab.color}-500 text-${tab.color}-600 bg-${tab.color}-50`
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 hover:bg-gray-50'
-                }`}
-              >
-                <span className="text-lg">{tab.icon}</span>
-                <span>{tab.label}</span>
-              </button>
-            ))}
-          </div>
+      {/* Navigation */}
+      <nav style={styles.nav}>
+        <div style={styles.navContent}>
+          {[
+            { id: 'properties', label: '🏠 Имоти' },
+            { id: 'buyers', label: '👥 Купувачи' },
+            { id: 'sellers', label: '🏪 Продавачи' },
+            { id: 'tasks', label: '📅 Задачи' }
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setCurrentPage(tab.id)}
+              style={{
+                ...styles.navButton,
+                ...(currentPage === tab.id ? styles.navButtonActive : styles.navButtonInactive)
+              }}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
       </nav>
 
       {/* Error Message */}
       {error && (
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="bg-red-50 border-l-4 border-red-400 p-4 rounded-lg shadow-md">
-            <div className="flex">
-              <div className="flex-shrink-0">
-                <span className="text-red-400 text-xl">⚠️</span>
-              </div>
-              <div className="ml-3">
-                <p className="text-sm text-red-800 font-medium">{error}</p>
-              </div>
-              <div className="ml-auto pl-3">
-                <button 
-                  onClick={() => setError(null)}
-                  className="text-red-400 hover:text-red-600 font-bold"
-                >
-                  ×
-                </button>
-              </div>
-            </div>
+        <div style={{maxWidth: '1200px', margin: '0 auto', padding: '1rem'}}>
+          <div style={styles.errorAlert}>
+            <div style={styles.errorText}>{error}</div>
+            <button 
+              onClick={() => setError(null)}
+              style={{background: 'none', border: 'none', fontSize: '1.25rem', cursor: 'pointer'}}
+            >
+              ×
+            </button>
           </div>
         </div>
       )}
 
       {/* Loading Spinner */}
       {loading && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white p-8 rounded-xl shadow-2xl">
-            <div className="flex items-center space-x-4">
-              <div className="animate-spin rounded-full h-8 w-8 border-4 border-blue-600 border-t-transparent"></div>
-              <p className="text-gray-700 font-medium">Зареждане...</p>
-            </div>
+        <div style={styles.loadingOverlay}>
+          <div style={styles.loadingContent}>
+            <div style={styles.spinner}></div>
+            <span>Зареждане...</span>
           </div>
         </div>
       )}
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main style={styles.main}>
         {/* Properties Section */}
         {currentPage === 'properties' && (
           <div>
-            <div className="mb-8 flex justify-between items-center">
-              <div>
-                <h2 className="text-3xl font-bold text-gray-900 mb-2">🏠 Имоти</h2>
-                <p className="text-gray-600">Управлявайте вашите имоти и следете статистиката</p>
-              </div>
+            <div style={styles.sectionHeader}>
+              <h2 style={styles.sectionTitle}>🏠 Имоти</h2>
               <button
                 onClick={() => {
                   setEditingProperty(null);
                   setShowPropertyModal(true);
                 }}
-                className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-3 rounded-xl font-semibold hover:from-blue-700 hover:to-purple-700 transform hover:scale-105 transition-all shadow-lg flex items-center space-x-2"
+                style={{
+                  ...styles.addButton,
+                  ':hover': {backgroundColor: '#2563eb'}
+                }}
               >
-                <span className="text-lg">✨</span>
-                <span>Добави имот</span>
+                + Добави имот
               </button>
             </div>
 
-            {/* Beautiful Filter Buttons */}
-            <div className="mb-8 flex flex-wrap gap-3">
+            {/* Filter Buttons */}
+            <div style={styles.filterButtons}>
               {[
-                { key: 'all', label: `Всички (${properties.length})`, icon: '🎯', color: 'gray' },
-                { key: 'sale', label: `Продажба (${properties.filter(p => p.propertyType === 'sale').length})`, icon: '💰', color: 'green' },
-                { key: 'rent', label: `Наем (${properties.filter(p => p.propertyType === 'rent').length})`, icon: '🏠', color: 'blue' },
-                { key: 'managed', label: `Управлявани (${properties.filter(p => p.propertyType === 'managed').length})`, icon: '📋', color: 'purple' }
+                { key: 'all', label: `Всички (${properties.length})` },
+                { key: 'sale', label: `Продажба (${properties.filter(p => p.propertyType === 'sale').length})` },
+                { key: 'rent', label: `Наем (${properties.filter(p => p.propertyType === 'rent').length})` },
+                { key: 'managed', label: `Управлявани (${properties.filter(p => p.propertyType === 'managed').length})` }
               ].map((filter) => (
                 <button
                   key={filter.key}
                   onClick={() => setPropertyFilter(filter.key)}
-                  className={`flex items-center space-x-2 px-6 py-3 rounded-xl font-semibold transition-all duration-200 ${
-                    propertyFilter === filter.key
-                      ? `bg-gradient-to-r from-${filter.color}-500 to-${filter.color}-600 text-white shadow-lg transform scale-105`
-                      : 'bg-white text-gray-700 hover:bg-gray-50 border-2 border-gray-200 hover:border-gray-300'
-                  }`}
+                  style={{
+                    ...styles.filterButton,
+                    ...(propertyFilter === filter.key ? styles.filterButtonActive : {})
+                  }}
                 >
-                  <span className="text-lg">{filter.icon}</span>
-                  <span>{filter.label}</span>
+                  {filter.label}
                 </button>
               ))}
             </div>
 
-            {/* Beautiful Properties Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {/* Properties Grid */}
+            <div style={styles.grid}>
               {getFilteredProperties().map((property) => (
-                <div key={property.id} className="bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border border-gray-100">
-                  <div className="h-56 bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 relative overflow-hidden">
-                    <div className="absolute inset-0 bg-black bg-opacity-20"></div>
-                    <div className="absolute top-4 right-4 flex space-x-2">
-                      <span className="bg-white bg-opacity-90 text-gray-800 px-3 py-1 rounded-full text-xs font-bold flex items-center space-x-1">
-                        <span>⭐</span>
-                        <span>4.5/5</span>
-                      </span>
-                      <button className="text-white hover:text-red-300 transition-colors text-xl">
-                        ❤️
-                      </button>
-                    </div>
-                    <div className="absolute bottom-4 left-4">
-                      <span className={`px-3 py-1 rounded-full text-xs font-bold text-white ${
-                        property.status === 'available' ? 'bg-green-500' :
-                        property.status === 'rented' ? 'bg-yellow-500' :
-                        'bg-blue-500'
-                      }`}>
-                        {property.status === 'available' ? '🟢 Свободен' :
-                         property.status === 'rented' ? '🟡 Отдаден' :
-                         '🔵 Управляван'}
-                      </span>
-                    </div>
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <div className="text-white text-6xl opacity-30">
-                        🏠
-                      </div>
+                <div 
+                  key={property.id} 
+                  style={{
+                    ...styles.card,
+                    ':hover': {
+                      transform: 'translateY(-4px)',
+                      boxShadow: '0 10px 25px rgba(0,0,0,0.15)'
+                    }
+                  }}
+                >
+                  <div style={styles.cardImage}>
+                    <div style={styles.cardImageIcon}>🏠</div>
+                    <div style={getStatusBadgeStyle(property.status)}>
+                      {property.status === 'available' ? 'Свободен' :
+                       property.status === 'rented' ? 'Отдаден' :
+                       'Управляван'}
                     </div>
                   </div>
 
-                  <div className="p-6">
-                    <h3 className="text-xl font-bold text-gray-900 mb-2 leading-tight">{property.title}</h3>
-                    <div className="flex items-center text-gray-600 text-sm mb-4">
-                      <span className="mr-2">📍</span>
-                      <span>{property.address}</span>
-                    </div>
+                  <div style={styles.cardContent}>
+                    <h3 style={styles.cardTitle}>{property.title}</h3>
+                    <div style={styles.cardAddress}>📍 {property.address}</div>
                     
-                    <div className="flex justify-between items-center mb-4">
+                    <div style={styles.priceContainer}>
                       <div>
-                        <div className="text-2xl font-bold bg-gradient-to-r from-green-600 to-blue-600 bg-clip-text text-transparent">
+                        <div style={styles.price}>
                           {property.propertyType === 'sale' ? 
                             formatPrice(property.priceEur) :
                             `${formatPrice(property.monthlyRentEur)}/месец`
                           }
                         </div>
                         {property.propertyType === 'sale' && currency === 'EUR' && property.priceEur && (
-                          <div className="text-sm text-gray-500">
+                          <div style={styles.priceSecondary}>
                             ≈ {Math.round(parseFloat(property.priceEur) * EUR_TO_BGN_RATE).toLocaleString()} лв.
                           </div>
                         )}
                       </div>
-                      <div className="text-right">
-                        <div className="flex items-center text-sm text-gray-600 mb-1">
-                          <span className="mr-1">📐</span>
-                          <span>{property.area} кв.м</span>
-                        </div>
-                        <div className="flex items-center text-sm text-gray-600">
-                          <span className="mr-1">🚪</span>
-                          <span>{property.rooms} стаи</span>
-                        </div>
+                      <div style={styles.details}>
+                        <div>📐 {property.area} кв.м</div>
+                        <div>🚪 {property.rooms} стаи</div>
                       </div>
                     </div>
 
                     {property.tenants && property.tenants.length > 0 && (
-                      <div className="mb-4 p-3 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg border border-blue-200">
-                        <div className="text-sm text-blue-800 font-medium flex items-center">
-                          <span className="mr-2">👤</span>
-                          <span>Наемател: {property.tenants[0].firstName} {property.tenants[0].lastName}</span>
-                        </div>
+                      <div style={{
+                        padding: '0.75rem',
+                        backgroundColor: '#eff6ff',
+                        borderRadius: '0.5rem',
+                        marginBottom: '1rem',
+                        fontSize: '0.875rem',
+                        color: '#1e40af'
+                      }}>
+                        👤 Наемател: {property.tenants[0].firstName} {property.tenants[0].lastName}
                       </div>
                     )}
 
-                    <div className="flex justify-between items-center pt-4 border-t border-gray-100">
-                      <div className="flex items-center text-sm text-gray-500">
-                        <span className="mr-2">👁️</span>
-                        <span>{property.viewings || 0} прегледа</span>
+                    <div style={styles.cardActions}>
+                      <div style={{fontSize: '0.875rem', color: '#6b7280'}}>
+                        👁️ {property.viewings || 0} прегледа
                       </div>
-                      <div className="flex space-x-2">
+                      <div style={{display: 'flex', gap: '0.5rem'}}>
                         <button
                           onClick={() => openEditPropertyModal(property)}
-                          className="bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-600 transition-colors flex items-center space-x-1"
+                          style={{...styles.actionButton, ...styles.editButton}}
                         >
-                          <span>✏️</span>
-                          <span>Редактирай</span>
+                          ✏️ Редактирай
                         </button>
                         <button
                           onClick={() => handleDeleteProperty(property.id)}
-                          className="bg-red-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-600 transition-colors flex items-center space-x-1"
+                          style={{...styles.actionButton, ...styles.deleteButton}}
                         >
-                          <span>🗑️</span>
-                          <span>Изтрий</span>
+                          🗑️ Изтрий
                         </button>
                       </div>
                     </div>
@@ -1132,10 +1437,10 @@ const App = () => {
             </div>
 
             {getFilteredProperties().length === 0 && (
-              <div className="text-center py-16">
-                <div className="text-6xl mb-4">🏠</div>
-                <div className="text-gray-500 text-xl mb-2">Няма имоти за показване</div>
-                <p className="text-gray-400">Добавете първия си имот, за да започнете</p>
+              <div style={styles.emptyState}>
+                <div style={styles.emptyIcon}>🏠</div>
+                <div style={styles.emptyTitle}>Няма имоти за показване</div>
+                <div>Добавете първия си имот, за да започнете</div>
               </div>
             )}
           </div>
@@ -1144,84 +1449,74 @@ const App = () => {
         {/* Buyers Section */}
         {currentPage === 'buyers' && (
           <div>
-            <div className="mb-8 flex justify-between items-center">
-              <div>
-                <h2 className="text-3xl font-bold text-gray-900 mb-2">👥 Купувачи</h2>
-                <p className="text-gray-600">Управлявайте вашите клиенти и следете статистиката</p>
-              </div>
+            <div style={styles.sectionHeader}>
+              <h2 style={styles.sectionTitle}>👥 Купувачи</h2>
               <button
                 onClick={() => {
                   setEditingBuyer(null);
                   setShowBuyerModal(true);
                 }}
-                className="bg-gradient-to-r from-green-600 to-blue-600 text-white px-6 py-3 rounded-xl font-semibold hover:from-green-700 hover:to-blue-700 transform hover:scale-105 transition-all shadow-lg flex items-center space-x-2"
+                style={{...styles.addButton, backgroundColor: '#10b981'}}
               >
-                <span className="text-lg">✨</span>
-                <span>Добави купувач</span>
+                + Добави купувач
               </button>
             </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            <div style={styles.grid}>
               {buyers.map((buyer) => (
-                <div key={buyer.id} className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border border-gray-100">
-                  <div className="flex items-center space-x-4 mb-4">
-                    <div className="w-16 h-16 bg-gradient-to-br from-green-400 to-blue-500 rounded-full flex items-center justify-center text-white text-2xl font-bold">
-                      {buyer.firstName[0]}{buyer.lastName[0]}
-                    </div>
-                    <div>
-                      <h3 className="text-xl font-bold text-gray-900">{buyer.firstName} {buyer.lastName}</h3>
-                      <span className={`inline-flex px-3 py-1 rounded-full text-xs font-semibold ${
-                        buyer.status === 'active' ? 'bg-green-100 text-green-800' :
-                        buyer.status === 'potential' ? 'bg-yellow-100 text-yellow-800' :
-                        buyer.status === 'converted' ? 'bg-blue-100 text-blue-800' :
-                        'bg-gray-100 text-gray-800'
-                      }`}>
-                        {buyer.status === 'active' ? '🔥 Активен' :
-                         buyer.status === 'potential' ? '🔮 Потенциален' :
-                         buyer.status === 'converted' ? '🎉 Клиент' :
-                         '😴 Неактивен'}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="space-y-3 mb-6">
-                    <div className="flex items-center text-gray-600">
-                      <span className="mr-3 text-lg">📞</span>
-                      <span className="font-medium">{buyer.phone}</span>
-                    </div>
-                    {buyer.email && (
-                      <div className="flex items-center text-gray-600">
-                        <span className="mr-3 text-lg">✉️</span>
-                        <span className="font-medium">{buyer.email}</span>
+                <div key={buyer.id} style={styles.card}>
+                  <div style={styles.cardContent}>
+                    <div style={{display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem'}}>
+                      <div style={{
+                        width: '3rem',
+                        height: '3rem',
+                        borderRadius: '50%',
+                        backgroundColor: '#3b82f6',
+                        color: 'white',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontWeight: 'bold'
+                      }}>
+                        {buyer.firstName[0]}{buyer.lastName[0]}
                       </div>
-                    )}
-                    {(buyer.budgetMin || buyer.budgetMax) && (
-                      <div className="flex items-center text-gray-600">
-                        <span className="mr-3 text-lg">💰</span>
-                        <span className="font-medium">
-                          Бюджет: {buyer.budgetMin ? formatPrice(buyer.budgetMin) : '0'} - {buyer.budgetMax ? formatPrice(buyer.budgetMax) : '∞'}
+                      <div>
+                        <h3 style={styles.cardTitle}>{buyer.firstName} {buyer.lastName}</h3>
+                        <span style={getBuyerStatusBadge(buyer.status)}>
+                          {buyer.status === 'active' ? 'Активен' :
+                           buyer.status === 'potential' ? 'Потенциален' :
+                           buyer.status === 'converted' ? 'Клиент' :
+                           'Неактивен'}
                         </span>
                       </div>
-                    )}
-                  </div>
-                  
-                  <div className="flex justify-between items-center pt-4 border-t border-gray-100">
-                    <div className="text-sm text-gray-500">
-                      Последен контакт: {buyer.lastContact ? new Date(buyer.lastContact).toLocaleDateString('bg-BG') : 'Няма'}
                     </div>
-                    <div className="flex space-x-2">
-                      <button
-                        onClick={() => openEditBuyerModal(buyer)}
-                        className="bg-green-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-600 transition-colors flex items-center space-x-1"
-                      >
-                        <span>✏️</span>
-                      </button>
-                      <button
-                        onClick={() => handleDeleteBuyer(buyer.id)}
-                        className="bg-red-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-600 transition-colors flex items-center space-x-1"
-                      >
-                        <span>🗑️</span>
-                      </button>
+
+                    <div style={{marginBottom: '1rem'}}>
+                      <div style={{marginBottom: '0.5rem'}}>📞 {buyer.phone}</div>
+                      {buyer.email && <div style={{marginBottom: '0.5rem'}}>✉️ {buyer.email}</div>}
+                      {(buyer.budgetMin || buyer.budgetMax) && (
+                        <div>💰 Бюджет: {buyer.budgetMin ? formatPrice(buyer.budgetMin) : '0'} - {buyer.budgetMax ? formatPrice(buyer.budgetMax) : '∞'}</div>
+                      )}
+                    </div>
+                    
+                    <div style={styles.cardActions}>
+                      <div style={{fontSize: '0.875rem', color: '#6b7280'}}>
+                        Контакт: {buyer.lastContact ? new Date(buyer.lastContact).toLocaleDateString('bg-BG') : 'Няма'}
+                      </div>
+                      <div style={{display: 'flex', gap: '0.5rem'}}>
+                        <button
+                          onClick={() => openEditBuyerModal(buyer)}
+                          style={{...styles.actionButton, backgroundColor: '#10b981', color: 'white'}}
+                        >
+                          ✏️
+                        </button>
+                        <button
+                          onClick={() => handleDeleteBuyer(buyer.id)}
+                          style={{...styles.actionButton, ...styles.deleteButton}}
+                        >
+                          🗑️
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1229,10 +1524,10 @@ const App = () => {
             </div>
 
             {buyers.length === 0 && (
-              <div className="text-center py-16">
-                <div className="text-6xl mb-4">👥</div>
-                <div className="text-gray-500 text-xl mb-2">Няма купувачи за показване</div>
-                <p className="text-gray-400">Добавете първия си купувач, за да започнете</p>
+              <div style={styles.emptyState}>
+                <div style={styles.emptyIcon}>👥</div>
+                <div style={styles.emptyTitle}>Няма купувачи за показване</div>
+                <div>Добавете първия си купувач, за да започнете</div>
               </div>
             )}
           </div>
@@ -1240,18 +1535,18 @@ const App = () => {
 
         {/* Other sections placeholders */}
         {currentPage === 'sellers' && (
-          <div className="text-center py-16">
-            <div className="text-6xl mb-4">🏪</div>
-            <h2 className="text-3xl font-bold text-gray-900 mb-4">Продавачи</h2>
-            <p className="text-gray-500 text-lg">Тази секция ще бъде добавена скоро...</p>
+          <div style={styles.emptyState}>
+            <div style={styles.emptyIcon}>🏪</div>
+            <div style={styles.emptyTitle}>Продавачи</div>
+            <div>Тази секция ще бъде добавена скоро...</div>
           </div>
         )}
 
         {currentPage === 'tasks' && (
-          <div className="text-center py-16">
-            <div className="text-6xl mb-4">📅</div>
-            <h2 className="text-3xl font-bold text-gray-900 mb-4">Задачи</h2>
-            <p className="text-gray-500 text-lg">Тази секция ще бъде добавена скоро...</p>
+          <div style={styles.emptyState}>
+            <div style={styles.emptyIcon}>📅</div>
+            <div style={styles.emptyTitle}>Задачи</div>
+            <div>Тази секция ще бъде добавена скоро...</div>
           </div>
         )}
       </main>
