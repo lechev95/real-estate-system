@@ -1,70 +1,43 @@
+// backend/routes/tasks.js
 const express = require('express');
-const { body, validationResult } = require('express-validator');
+const router = express.Router();
 const { PrismaClient } = require('@prisma/client');
 
-const router = express.Router();
 const prisma = new PrismaClient();
 
-// GET /api/tasks - Get all tasks
+// GET /api/tasks - Get all tasks with filters
 router.get('/', async (req, res) => {
   try {
-    const {
-      status,
-      priority,
-      taskType,
-      agentId,
-      buyerId,
-      sellerId,
-      propertyId,
-      page = 1,
-      limit = 20,
-      sortBy = 'dueDate',
-      sortOrder = 'asc'
-    } = req.query;
-
-    // Build where clause
+    const { status, priority, type, dueDate, page = 1, limit = 20 } = req.query;
+    
     const where = {};
     
-    if (status) where.status = status;
-    if (priority) where.priority = priority;
-    if (taskType) where.taskType = taskType;
-    if (agentId) where.assignedAgentId = parseInt(agentId);
-    if (buyerId) where.buyerId = parseInt(buyerId);
-    if (sellerId) where.sellerId = parseInt(sellerId);
-    if (propertyId) where.propertyId = parseInt(propertyId);
+    if (status && status !== 'all') {
+      where.status = status;
+    }
+    
+    if (priority && priority !== 'all') {
+      where.priority = priority;
+    }
+    
+    if (type && type !== 'all') {
+      where.type = type;
+    }
+    
+    if (dueDate) {
+      const date = new Date(dueDate);
+      where.dueDate = {
+        gte: new Date(date.setHours(0, 0, 0, 0)),
+        lte: new Date(date.setHours(23, 59, 59, 999))
+      };
+    }
 
-    // Pagination
     const skip = (parseInt(page) - 1) * parseInt(limit);
-    const take = parseInt(limit);
-
+    
     const [tasks, total] = await Promise.all([
       prisma.task.findMany({
         where,
         include: {
-          buyer: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              phone: true
-            }
-          },
-          seller: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              phone: true
-            }
-          },
-          property: {
-            select: {
-              id: true,
-              title: true,
-              address: true,
-              district: true
-            }
-          },
           assignedAgent: {
             select: {
               id: true,
@@ -72,24 +45,42 @@ router.get('/', async (req, res) => {
               lastName: true,
               email: true
             }
+          },
+          property: {
+            select: {
+              id: true,
+              title: true,
+              address: true
+            }
+          },
+          buyer: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              phone: true
+            }
           }
         },
-        orderBy: { [sortBy]: sortOrder },
+        orderBy: [
+          { status: 'asc' }, // Pending tasks first
+          { priority: 'desc' }, // High priority first
+          { dueDate: 'asc' } // Earlier due dates first
+        ],
         skip,
-        take
+        take: parseInt(limit)
       }),
       prisma.task.count({ where })
     ]);
 
-    res.json({
-      tasks,
-      pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total,
-        pages: Math.ceil(total / parseInt(limit))
-      }
-    });
+    const pagination = {
+      page: parseInt(page),
+      limit: parseInt(limit),
+      total,
+      pages: Math.ceil(total / parseInt(limit))
+    };
+
+    res.json({ tasks, pagination });
   } catch (error) {
     console.error('Error fetching tasks:', error);
     res.status(500).json({ error: 'Failed to fetch tasks' });
@@ -104,21 +95,11 @@ router.get('/:id', async (req, res) => {
     const task = await prisma.task.findUnique({
       where: { id: parseInt(id) },
       include: {
-        buyer: {
+        assignedAgent: {
           select: {
             id: true,
             firstName: true,
             lastName: true,
-            phone: true,
-            email: true
-          }
-        },
-        seller: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            phone: true,
             email: true
           }
         },
@@ -127,19 +108,17 @@ router.get('/:id', async (req, res) => {
             id: true,
             title: true,
             address: true,
-            district: true,
-            propertyType: true,
-            priceEur: true,
-            monthlyRentEur: true
+            city: true,
+            district: true
           }
         },
-        assignedAgent: {
+        buyer: {
           select: {
             id: true,
             firstName: true,
             lastName: true,
-            email: true,
-            phone: true
+            phone: true,
+            email: true
           }
         }
       }
@@ -157,57 +136,86 @@ router.get('/:id', async (req, res) => {
 });
 
 // POST /api/tasks - Create new task
-router.post('/', [
-  body('title').notEmpty().withMessage('Title is required'),
-  body('dueDate').isISO8601().withMessage('Valid due date is required'),
-  body('dueTime').notEmpty().withMessage('Due time is required'),
-  body('priority').isIn(['urgent', 'high', 'medium', 'low']).withMessage('Invalid priority'),
-], async (req, res) => {
+router.post('/', async (req, res) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+    const {
+      title,
+      description,
+      type,
+      priority = 'medium',
+      status = 'pending',
+      dueDate,
+      assignedAgentId,
+      propertyId,
+      buyerId
+    } = req.body;
+
+    // Validation
+    if (!title || !type || !dueDate) {
+      return res.status(400).json({ 
+        error: 'Missing required fields: title, type, dueDate' 
+      });
     }
 
-    // Parse time string to Date object
-    const dueTime = new Date(`1970-01-01T${req.body.dueTime}:00Z`);
+    // Validate enum values
+    const validTypes = ['call', 'viewing', 'meeting', 'document', 'follow_up', 'other'];
+    const validPriorities = ['low', 'medium', 'high', 'urgent'];
+    const validStatuses = ['pending', 'in_progress', 'completed', 'cancelled'];
+
+    if (!validTypes.includes(type)) {
+      return res.status(400).json({ error: 'Invalid task type' });
+    }
+
+    if (!validPriorities.includes(priority)) {
+      return res.status(400).json({ error: 'Invalid priority level' });
+    }
+
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ error: 'Invalid status' });
+    }
+
+    // Validate due date
+    const dueDateObj = new Date(dueDate);
+    if (isNaN(dueDateObj.getTime())) {
+      return res.status(400).json({ error: 'Invalid due date format' });
+    }
+
+    const taskData = {
+      title,
+      description: description || '',
+      type,
+      priority,
+      status,
+      dueDate: dueDateObj,
+      assignedAgentId: assignedAgentId ? parseInt(assignedAgentId) : 1, // Default to first agent
+      propertyId: propertyId ? parseInt(propertyId) : null,
+      buyerId: buyerId ? parseInt(buyerId) : null
+    };
 
     const task = await prisma.task.create({
-      data: {
-        ...req.body,
-        dueDate: new Date(req.body.dueDate),
-        dueTime: dueTime,
-        buyerId: req.body.buyerId ? parseInt(req.body.buyerId) : null,
-        sellerId: req.body.sellerId ? parseInt(req.body.sellerId) : null,
-        propertyId: req.body.propertyId ? parseInt(req.body.propertyId) : null,
-        assignedAgentId: req.body.assignedAgentId ? parseInt(req.body.assignedAgentId) : null,
-      },
+      data: taskData,
       include: {
-        buyer: {
+        assignedAgent: {
           select: {
             id: true,
             firstName: true,
-            lastName: true
-          }
-        },
-        seller: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true
+            lastName: true,
+            email: true
           }
         },
         property: {
           select: {
             id: true,
-            title: true
+            title: true,
+            address: true
           }
         },
-        assignedAgent: {
+        buyer: {
           select: {
             id: true,
             firstName: true,
-            lastName: true
+            lastName: true,
+            phone: true
           }
         }
       }
@@ -221,62 +229,77 @@ router.post('/', [
 });
 
 // PUT /api/tasks/:id - Update task
-router.put('/:id', [
-  body('title').notEmpty().withMessage('Title is required'),
-  body('dueDate').isISO8601().withMessage('Valid due date is required'),
-  body('dueTime').notEmpty().withMessage('Due time is required'),
-  body('priority').isIn(['urgent', 'high', 'medium', 'low']).withMessage('Invalid priority'),
-  body('status').isIn(['pending', 'completed', 'cancelled']).withMessage('Invalid status'),
-], async (req, res) => {
+router.put('/:id', async (req, res) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+    const { id } = req.params;
+    const updateData = { ...req.body };
+
+    // Convert numeric fields
+    if (updateData.assignedAgentId) updateData.assignedAgentId = parseInt(updateData.assignedAgentId);
+    if (updateData.propertyId) updateData.propertyId = parseInt(updateData.propertyId);
+    if (updateData.buyerId) updateData.buyerId = parseInt(updateData.buyerId);
+
+    // Convert date fields
+    if (updateData.dueDate) {
+      const dueDateObj = new Date(updateData.dueDate);
+      if (isNaN(dueDateObj.getTime())) {
+        return res.status(400).json({ error: 'Invalid due date format' });
+      }
+      updateData.dueDate = dueDateObj;
     }
 
-    const { id } = req.params;
-    
-    // Parse time string to Date object
-    const dueTime = new Date(`1970-01-01T${req.body.dueTime}:00Z`);
+    // Validate enum values if provided
+    if (updateData.type) {
+      const validTypes = ['call', 'viewing', 'meeting', 'document', 'follow_up', 'other'];
+      if (!validTypes.includes(updateData.type)) {
+        return res.status(400).json({ error: 'Invalid task type' });
+      }
+    }
+
+    if (updateData.priority) {
+      const validPriorities = ['low', 'medium', 'high', 'urgent'];
+      if (!validPriorities.includes(updateData.priority)) {
+        return res.status(400).json({ error: 'Invalid priority level' });
+      }
+    }
+
+    if (updateData.status) {
+      const validStatuses = ['pending', 'in_progress', 'completed', 'cancelled'];
+      if (!validStatuses.includes(updateData.status)) {
+        return res.status(400).json({ error: 'Invalid status' });
+      }
+      
+      // Set completion date if status changed to completed
+      if (updateData.status === 'completed') {
+        updateData.completedAt = new Date();
+      }
+    }
 
     const task = await prisma.task.update({
       where: { id: parseInt(id) },
-      data: {
-        ...req.body,
-        dueDate: new Date(req.body.dueDate),
-        dueTime: dueTime,
-        buyerId: req.body.buyerId ? parseInt(req.body.buyerId) : null,
-        sellerId: req.body.sellerId ? parseInt(req.body.sellerId) : null,
-        propertyId: req.body.propertyId ? parseInt(req.body.propertyId) : null,
-        assignedAgentId: req.body.assignedAgentId ? parseInt(req.body.assignedAgentId) : null,
-        updatedAt: new Date()
-      },
+      data: updateData,
       include: {
-        buyer: {
+        assignedAgent: {
           select: {
             id: true,
             firstName: true,
-            lastName: true
-          }
-        },
-        seller: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true
+            lastName: true,
+            email: true
           }
         },
         property: {
           select: {
             id: true,
-            title: true
+            title: true,
+            address: true
           }
         },
-        assignedAgent: {
+        buyer: {
           select: {
             id: true,
             firstName: true,
-            lastName: true
+            lastName: true,
+            phone: true
           }
         }
       }
@@ -296,7 +319,17 @@ router.put('/:id', [
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    
+
+    // Check if task exists
+    const task = await prisma.task.findUnique({
+      where: { id: parseInt(id) }
+    });
+
+    if (!task) {
+      return res.status(404).json({ error: 'Task not found' });
+    }
+
+    // Delete the task
     await prisma.task.delete({
       where: { id: parseInt(id) }
     });
@@ -311,34 +344,26 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
-// GET /api/tasks/overdue - Get overdue tasks
-router.get('/overdue', async (req, res) => {
+// PATCH /api/tasks/:id/complete - Mark task as completed
+router.patch('/:id/complete', async (req, res) => {
   try {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const { id } = req.params;
+    const { notes } = req.body;
 
-    const overdueTasks = await prisma.task.findMany({
-      where: {
-        status: 'pending',
-        dueDate: {
-          lt: today
-        }
+    const task = await prisma.task.update({
+      where: { id: parseInt(id) },
+      data: {
+        status: 'completed',
+        completedAt: new Date(),
+        ...(notes && { description: notes })
       },
       include: {
-        buyer: {
+        assignedAgent: {
           select: {
             id: true,
             firstName: true,
             lastName: true,
-            phone: true
-          }
-        },
-        seller: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            phone: true
+            email: true
           }
         },
         property: {
@@ -348,18 +373,133 @@ router.get('/overdue', async (req, res) => {
             address: true
           }
         },
+        buyer: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            phone: true
+          }
+        }
+      }
+    });
+
+    res.json(task);
+  } catch (error) {
+    console.error('Error completing task:', error);
+    if (error.code === 'P2025') {
+      return res.status(404).json({ error: 'Task not found' });
+    }
+    res.status(500).json({ error: 'Failed to complete task' });
+  }
+});
+
+// PATCH /api/tasks/:id/status - Update task status
+router.patch('/:id/status', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, notes } = req.body;
+
+    if (!status) {
+      return res.status(400).json({ error: 'Status is required' });
+    }
+
+    const validStatuses = ['pending', 'in_progress', 'completed', 'cancelled'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ error: 'Invalid status value' });
+    }
+
+    const updateData = { status };
+    
+    // Set completion date if status is completed
+    if (status === 'completed') {
+      updateData.completedAt = new Date();
+    }
+    
+    // Add notes if provided
+    if (notes) {
+      updateData.description = notes;
+    }
+
+    const task = await prisma.task.update({
+      where: { id: parseInt(id) },
+      data: updateData,
+      include: {
         assignedAgent: {
           select: {
             id: true,
             firstName: true,
-            lastName: true
+            lastName: true,
+            email: true
+          }
+        },
+        property: {
+          select: {
+            id: true,
+            title: true,
+            address: true
+          }
+        },
+        buyer: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            phone: true
+          }
+        }
+      }
+    });
+
+    res.json(task);
+  } catch (error) {
+    console.error('Error updating status:', error);
+    if (error.code === 'P2025') {
+      return res.status(404).json({ error: 'Task not found' });
+    }
+    res.status(500).json({ error: 'Failed to update status' });
+  }
+});
+
+// GET /api/tasks/overdue - Get overdue tasks
+router.get('/overdue', async (req, res) => {
+  try {
+    const tasks = await prisma.task.findMany({
+      where: {
+        AND: [
+          { status: { not: 'completed' } },
+          { dueDate: { lt: new Date() } }
+        ]
+      },
+      include: {
+        assignedAgent: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true
+          }
+        },
+        property: {
+          select: {
+            id: true,
+            title: true,
+            address: true
+          }
+        },
+        buyer: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            phone: true
           }
         }
       },
       orderBy: { dueDate: 'asc' }
     });
 
-    res.json(overdueTasks);
+    res.json({ tasks, count: tasks.length });
   } catch (error) {
     console.error('Error fetching overdue tasks:', error);
     res.status(500).json({ error: 'Failed to fetch overdue tasks' });

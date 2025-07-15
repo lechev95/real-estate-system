@@ -1,442 +1,376 @@
+// backend/routes/analytics.js
 const express = require('express');
+const router = express.Router();
 const { PrismaClient } = require('@prisma/client');
 
-const router = express.Router();
 const prisma = new PrismaClient();
 
-// GET /api/analytics/dashboard - Get dashboard statistics
+// GET /api/analytics/dashboard - Get dashboard analytics
 router.get('/dashboard', async (req, res) => {
   try {
+    // Get basic counts
     const [
       totalProperties,
+      totalBuyers,
+      totalSellers,
+      activeBuyers,
       availableProperties,
-      soldProperties,
       rentedProperties,
       managedProperties,
-      totalBuyers,
-      activeBuyers,
-      convertedBuyers,
-      totalSellers,
-      activeSellers,
-      totalTasks,
       pendingTasks,
-      overdureTasks,
-      completedTasks,
-      monthlyRevenue,
-      averagePrice,
-      topViewedProperties,
-      recentTasks
+      overdueTasks,
+      completedTasksThisMonth
     ] = await Promise.all([
-      // Properties stats
       prisma.property.count(),
+      prisma.buyer.count(),
+      prisma.seller.count(),
+      prisma.buyer.count({ where: { status: 'active' } }),
       prisma.property.count({ where: { status: 'available' } }),
-      prisma.property.count({ where: { status: 'sold' } }),
       prisma.property.count({ where: { status: 'rented' } }),
       prisma.property.count({ where: { status: 'managed' } }),
-
-      // Buyers stats
-      prisma.buyer.count(),
-      prisma.buyer.count({ where: { status: 'active' } }),
-      prisma.buyer.count({ where: { status: 'converted' } }),
-
-      // Sellers stats
-      prisma.seller.count(),
-      prisma.seller.count({ where: { status: 'active' } }),
-
-      // Tasks stats
-      prisma.task.count(),
       prisma.task.count({ where: { status: 'pending' } }),
       prisma.task.count({ 
         where: { 
-          status: 'pending',
-          dueDate: { lt: new Date() }
+          AND: [
+            { status: { not: 'completed' } },
+            { dueDate: { lt: new Date() } }
+          ]
         } 
       }),
-      prisma.task.count({ where: { status: 'completed' } }),
-
-      // Financial stats
-      prisma.property.aggregate({
+      prisma.task.count({ 
         where: { 
-          propertyType: 'managed',
-          status: 'managed'
-        },
-        _sum: {
-          monthlyRentEur: true
-        }
-      }),
-
-      prisma.property.aggregate({
-        where: { 
-          propertyType: 'sale',
-          status: 'available',
-          priceEur: { not: null }
-        },
-        _avg: {
-          priceEur: true
-        }
-      }),
-
-      // Top viewed properties
-      prisma.property.findMany({
-        take: 5,
-        orderBy: { viewings: 'desc' },
-        select: {
-          id: true,
-          title: true,
-          district: true,
-          viewings: true,
-          status: true
-        }
-      }),
-
-      // Recent tasks
-      prisma.task.findMany({
-        take: 5,
-        where: { status: 'pending' },
-        orderBy: { dueDate: 'asc' },
-        select: {
-          id: true,
-          title: true,
-          dueDate: true,
-          priority: true,
-          assignedAgent: {
-            select: {
-              firstName: true,
-              lastName: true
-            }
-          }
-        }
+          AND: [
+            { status: 'completed' },
+            { completedAt: { gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1) } }
+          ]
+        } 
       })
     ]);
 
-    // Calculate monthly revenue from management fees
-    const managementRevenue = (monthlyRevenue._sum.monthlyRentEur || 0) * 0.08; // 8% average fee
-
-    res.json({
-      properties: {
-        total: totalProperties,
-        available: availableProperties,
-        sold: soldProperties,
-        rented: rentedProperties,
-        managed: managedProperties,
-        averagePrice: averagePrice._avg.priceEur || 0
-      },
-      buyers: {
-        total: totalBuyers,
-        active: activeBuyers,
-        converted: convertedBuyers,
-        conversionRate: totalBuyers > 0 ? ((convertedBuyers / totalBuyers) * 100).toFixed(1) : 0
-      },
-      sellers: {
-        total: totalSellers,
-        active: activeSellers
-      },
-      tasks: {
-        total: totalTasks,
-        pending: pendingTasks,
-        overdue: overdureTasks,
-        completed: completedTasks,
-        completionRate: totalTasks > 0 ? ((completedTasks / totalTasks) * 100).toFixed(1) : 0
-      },
-      revenue: {
-        monthlyManagement: managementRevenue,
-        totalRental: monthlyRevenue._sum.monthlyRentEur || 0
-      },
-      topViewedProperties,
-      recentTasks
+    // Calculate revenue metrics
+    const saleProperties = await prisma.property.findMany({
+      where: { propertyType: 'sale', status: 'available' },
+      select: { priceEur: true }
     });
+
+    const rentProperties = await prisma.property.findMany({
+      where: { 
+        OR: [
+          { propertyType: 'rent', status: 'rented' },
+          { propertyType: 'managed', status: 'managed' }
+        ]
+      },
+      select: { monthlyRentEur: true, managementFeePercent: true }
+    });
+
+    // Calculate total sale inventory value
+    const totalSaleValue = saleProperties.reduce((sum, property) => {
+      return sum + (parseFloat(property.priceEur) || 0);
+    }, 0);
+
+    // Calculate monthly rental income
+    const monthlyRentalIncome = rentProperties.reduce((sum, property) => {
+      const rent = parseFloat(property.monthlyRentEur) || 0;
+      const managementFee = parseFloat(property.managementFeePercent) || 0;
+      const commission = rent * (managementFee / 100);
+      return sum + commission;
+    }, 0);
+
+    // Get recent activity
+    const recentProperties = await prisma.property.findMany({
+      take: 5,
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        title: true,
+        propertyType: true,
+        status: true,
+        priceEur: true,
+        monthlyRentEur: true,
+        createdAt: true
+      }
+    });
+
+    const upcomingTasks = await prisma.task.findMany({
+      where: {
+        AND: [
+          { status: { not: 'completed' } },
+          { dueDate: { gte: new Date() } },
+          { dueDate: { lte: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) } } // Next 7 days
+        ]
+      },
+      take: 5,
+      orderBy: { dueDate: 'asc' },
+      include: {
+        assignedAgent: {
+          select: { firstName: true, lastName: true }
+        },
+        property: {
+          select: { title: true }
+        }
+      }
+    });
+
+    // Calculate property distribution by type
+    const propertyDistribution = {
+      sale: await prisma.property.count({ where: { propertyType: 'sale' } }),
+      rent: await prisma.property.count({ where: { propertyType: 'rent' } }),
+      managed: await prisma.property.count({ where: { propertyType: 'managed' } })
+    };
+
+    // Calculate buyer status distribution
+    const buyerDistribution = {
+      active: await prisma.buyer.count({ where: { status: 'active' } }),
+      potential: await prisma.buyer.count({ where: { status: 'potential' } }),
+      inactive: await prisma.buyer.count({ where: { status: 'inactive' } }),
+      converted: await prisma.buyer.count({ where: { status: 'converted' } })
+    };
+
+    // Calculate average property metrics
+    const avgPropertyMetrics = await prisma.property.aggregate({
+      _avg: {
+        area: true,
+        rooms: true,
+        viewings: true
+      }
+    });
+
+    // Get most viewed properties
+    const mostViewedProperties = await prisma.property.findMany({
+      take: 5,
+      orderBy: { viewings: 'desc' },
+      select: {
+        id: true,
+        title: true,
+        address: true,
+        viewings: true,
+        propertyType: true,
+        status: true
+      }
+    });
+
+    const dashboardData = {
+      kpis: {
+        totalProperties,
+        totalBuyers,
+        totalSellers,
+        activeBuyers,
+        availableProperties,
+        rentedProperties,
+        managedProperties,
+        pendingTasks,
+        overdueTasks,
+        completedTasksThisMonth,
+        totalSaleValue: Math.round(totalSaleValue),
+        monthlyRentalIncome: Math.round(monthlyRentalIncome)
+      },
+      recentActivity: {
+        properties: recentProperties,
+        upcomingTasks
+      },
+      distributions: {
+        properties: propertyDistribution,
+        buyers: buyerDistribution
+      },
+      metrics: {
+        averageArea: Math.round(avgPropertyMetrics._avg.area || 0),
+        averageRooms: Math.round(avgPropertyMetrics._avg.rooms || 0),
+        averageViewings: Math.round(avgPropertyMetrics._avg.viewings || 0)
+      },
+      topProperties: mostViewedProperties,
+      generatedAt: new Date().toISOString()
+    };
+
+    res.json(dashboardData);
+
   } catch (error) {
     console.error('Error fetching dashboard analytics:', error);
     res.status(500).json({ error: 'Failed to fetch dashboard analytics' });
   }
 });
 
-// GET /api/analytics/properties - Get property analytics
-router.get('/properties', async (req, res) => {
+// GET /api/analytics/kpis - Get just KPI metrics
+router.get('/kpis', async (req, res) => {
   try {
-    const { period = '30' } = req.query;
-    const daysAgo = new Date();
-    daysAgo.setDate(daysAgo.getDate() - parseInt(period));
-
     const [
-      propertiesByType,
-      propertiesByDistrict,
-      propertiesByStatus,
-      averagePriceByType,
-      recentlyAdded,
-      mostViewed,
-      priceRangeDistribution
+      totalProperties,
+      totalBuyers,
+      activeBuyers,
+      pendingTasks,
+      overdueTasks,
+      monthlyRevenue
     ] = await Promise.all([
-      // Properties by type
-      prisma.property.groupBy({
-        by: ['propertyType'],
-        _count: {
-          id: true
-        }
-      }),
-
-      // Properties by district
-      prisma.property.groupBy({
-        by: ['district'],
-        _count: {
-          id: true
-        },
-        orderBy: {
-          _count: {
-            id: 'desc'
-          }
-        },
-        take: 10
-      }),
-
-      // Properties by status
-      prisma.property.groupBy({
-        by: ['status'],
-        _count: {
-          id: true
-        }
-      }),
-
-      // Average price by type
-      prisma.property.groupBy({
-        by: ['propertyType'],
-        _avg: {
-          priceEur: true,
-          monthlyRentEur: true
-        },
-        where: {
-          OR: [
-            { priceEur: { not: null } },
-            { monthlyRentEur: { not: null } }
+      prisma.property.count(),
+      prisma.buyer.count(),
+      prisma.buyer.count({ where: { status: 'active' } }),
+      prisma.task.count({ where: { status: 'pending' } }),
+      prisma.task.count({ 
+        where: { 
+          AND: [
+            { status: { not: 'completed' } },
+            { dueDate: { lt: new Date() } }
           ]
-        }
+        } 
       }),
-
-      // Recently added properties
-      prisma.property.count({
-        where: {
-          createdAt: {
-            gte: daysAgo
-          }
-        }
-      }),
-
-      // Most viewed properties
+      // Calculate this month's potential commission
       prisma.property.findMany({
-        take: 10,
-        orderBy: { viewings: 'desc' },
-        select: {
-          id: true,
-          title: true,
-          district: true,
-          viewings: true,
-          priceEur: true,
-          monthlyRentEur: true,
-          propertyType: true
-        }
-      }),
-
-      // Price range distribution for sale properties
-      prisma.$queryRaw`
-        SELECT 
-          CASE 
-            WHEN price_eur < 50000 THEN 'Under 50k'
-            WHEN price_eur BETWEEN 50000 AND 100000 THEN '50k-100k'
-            WHEN price_eur BETWEEN 100000 AND 200000 THEN '100k-200k'
-            WHEN price_eur BETWEEN 200000 AND 300000 THEN '200k-300k'
-            WHEN price_eur > 300000 THEN 'Over 300k'
-          END as price_range,
-          COUNT(*) as count
-        FROM properties 
-        WHERE property_type = 'sale' AND price_eur IS NOT NULL
-        GROUP BY price_range
-        ORDER BY MIN(price_eur)
-      `
+        where: { 
+          OR: [
+            { propertyType: 'rent', status: 'rented' },
+            { propertyType: 'managed', status: 'managed' }
+          ]
+        },
+        select: { monthlyRentEur: true, managementFeePercent: true }
+      }).then(properties => {
+        return properties.reduce((sum, property) => {
+          const rent = parseFloat(property.monthlyRentEur) || 0;
+          const managementFee = parseFloat(property.managementFeePercent) || 0;
+          return sum + (rent * (managementFee / 100));
+        }, 0);
+      })
     ]);
 
     res.json({
-      propertiesByType,
-      propertiesByDistrict,
-      propertiesByStatus,
-      averagePriceByType,
-      recentlyAdded,
-      mostViewed,
-      priceRangeDistribution
+      totalProperties,
+      totalBuyers,
+      activeBuyers,
+      pendingTasks,
+      overdueTasks,
+      monthlyRevenue: Math.round(monthlyRevenue),
+      lastUpdated: new Date().toISOString()
     });
+
+  } catch (error) {
+    console.error('Error fetching KPIs:', error);
+    res.status(500).json({ error: 'Failed to fetch KPIs' });
+  }
+});
+
+// GET /api/analytics/properties - Property analytics
+router.get('/properties', async (req, res) => {
+  try {
+    const { period = '30' } = req.query;
+    const days = parseInt(period);
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+
+    // Property metrics by time period
+    const newProperties = await prisma.property.count({
+      where: { createdAt: { gte: startDate } }
+    });
+
+    const propertiesByType = await prisma.property.groupBy({
+      by: ['propertyType'],
+      _count: { id: true },
+      where: { createdAt: { gte: startDate } }
+    });
+
+    const propertiesByStatus = await prisma.property.groupBy({
+      by: ['status'],
+      _count: { id: true }
+    });
+
+    const propertiesByDistrict = await prisma.property.groupBy({
+      by: ['district'],
+      _count: { id: true },
+      orderBy: { _count: { id: 'desc' } },
+      take: 10
+    });
+
+    // Price analytics
+    const priceStats = await prisma.property.aggregate({
+      where: { propertyType: 'sale' },
+      _avg: { priceEur: true },
+      _min: { priceEur: true },
+      _max: { priceEur: true }
+    });
+
+    const rentStats = await prisma.property.aggregate({
+      where: { 
+        OR: [
+          { propertyType: 'rent' },
+          { propertyType: 'managed' }
+        ]
+      },
+      _avg: { monthlyRentEur: true },
+      _min: { monthlyRentEur: true },
+      _max: { monthlyRentEur: true }
+    });
+
+    res.json({
+      period: `${days} days`,
+      newProperties,
+      distributions: {
+        byType: propertiesByType,
+        byStatus: propertiesByStatus,
+        byDistrict: propertiesByDistrict
+      },
+      priceAnalytics: {
+        sale: {
+          average: Math.round(parseFloat(priceStats._avg.priceEur) || 0),
+          minimum: Math.round(parseFloat(priceStats._min.priceEur) || 0),
+          maximum: Math.round(parseFloat(priceStats._max.priceEur) || 0)
+        },
+        rent: {
+          average: Math.round(parseFloat(rentStats._avg.monthlyRentEur) || 0),
+          minimum: Math.round(parseFloat(rentStats._min.monthlyRentEur) || 0),
+          maximum: Math.round(parseFloat(rentStats._max.monthlyRentEur) || 0)
+        }
+      },
+      generatedAt: new Date().toISOString()
+    });
+
   } catch (error) {
     console.error('Error fetching property analytics:', error);
     res.status(500).json({ error: 'Failed to fetch property analytics' });
   }
 });
 
-// GET /api/analytics/revenue - Get revenue analytics
-router.get('/revenue', async (req, res) => {
+// GET /api/analytics/performance - Agent performance analytics
+router.get('/performance', async (req, res) => {
   try {
-    const [
-      managedProperties,
-      totalMonthlyRent,
-      averageManagementFee,
-      revenueByProperty
-    ] = await Promise.all([
-      // Managed properties count
-      prisma.property.count({
-        where: { propertyType: 'managed' }
-      }),
+    const { period = '30' } = req.query;
+    const days = parseInt(period);
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
 
-      // Total monthly rent from managed properties
-      prisma.property.aggregate({
-        where: { 
-          propertyType: 'managed',
-          status: 'managed'
+    // Agent performance metrics
+    const agentStats = await prisma.user.findMany({
+      include: {
+        assignedProperties: {
+          where: { createdAt: { gte: startDate } },
+          select: { id: true, propertyType: true }
         },
-        _sum: {
-          monthlyRentEur: true
-        }
-      }),
-
-      // Average management fee percentage
-      prisma.property.aggregate({
-        where: { 
-          propertyType: 'managed',
-          managementFeePercent: { not: null }
+        assignedBuyers: {
+          where: { createdAt: { gte: startDate } },
+          select: { id: true, status: true }
         },
-        _avg: {
-          managementFeePercent: true
+        assignedTasks: {
+          where: { createdAt: { gte: startDate } },
+          select: { id: true, status: true }
         }
-      }),
+      }
+    });
 
-      // Revenue breakdown by property
-      prisma.property.findMany({
-        where: { 
-          propertyType: 'managed',
-          status: 'managed',
-          monthlyRentEur: { not: null },
-          managementFeePercent: { not: null }
-        },
-        select: {
-          id: true,
-          title: true,
-          district: true,
-          monthlyRentEur: true,
-          managementFeePercent: true,
-          seller: {
-            select: {
-              firstName: true,
-              lastName: true
-            }
-          }
-        }
-      })
-    ]);
-
-    const avgFeePercent = averageManagementFee._avg.managementFeePercent || 8;
-    const totalRent = totalMonthlyRent._sum.monthlyRentEur || 0;
-    const estimatedMonthlyRevenue = totalRent * (avgFeePercent / 100);
-
-    // Calculate revenue per property
-    const revenueBreakdown = revenueByProperty.map(property => ({
-      ...property,
-      monthlyRevenue: (property.monthlyRentEur * (property.managementFeePercent / 100)).toFixed(2)
+    const performanceData = agentStats.map(agent => ({
+      agentId: agent.id,
+      name: `${agent.firstName} ${agent.lastName}`,
+      email: agent.email,
+      metrics: {
+        newProperties: agent.assignedProperties.length,
+        newBuyers: agent.assignedBuyers.length,
+        activeBuyers: agent.assignedBuyers.filter(b => b.status === 'active').length,
+        completedTasks: agent.assignedTasks.filter(t => t.status === 'completed').length,
+        pendingTasks: agent.assignedTasks.filter(t => t.status === 'pending').length
+      }
     }));
 
     res.json({
-      managedProperties,
-      totalMonthlyRent: totalRent,
-      estimatedMonthlyRevenue,
-      averageManagementFee: avgFeePercent,
-      estimatedYearlyRevenue: estimatedMonthlyRevenue * 12,
-      revenueBreakdown
+      period: `${days} days`,
+      agents: performanceData,
+      generatedAt: new Date().toISOString()
     });
-  } catch (error) {
-    console.error('Error fetching revenue analytics:', error);
-    res.status(500).json({ error: 'Failed to fetch revenue analytics' });
-  }
-});
 
-// GET /api/analytics/performance - Get agent performance
-router.get('/performance', async (req, res) => {
-  try {
-    const { agentId, period = '30' } = req.query;
-    const daysAgo = new Date();
-    daysAgo.setDate(daysAgo.getDate() - parseInt(period));
-
-    let whereClause = {
-      createdAt: {
-        gte: daysAgo
-      }
-    };
-
-    if (agentId) {
-      whereClause.assignedAgentId = parseInt(agentId);
-    }
-
-    const [
-      agentStats,
-      taskCompletion,
-      propertyPerformance
-    ] = await Promise.all([
-      // Agent statistics
-      prisma.user.findMany({
-        where: {
-          role: 'agent',
-          ...(agentId && { id: parseInt(agentId) })
-        },
-        select: {
-          id: true,
-          firstName: true,
-          lastName: true,
-          assignedProperties: {
-            where: { createdAt: { gte: daysAgo } },
-            select: { id: true }
-          },
-          assignedBuyers: {
-            where: { createdAt: { gte: daysAgo } },
-            select: { id: true, status: true }
-          },
-          assignedSellers: {
-            where: { createdAt: { gte: daysAgo } },
-            select: { id: true }
-          },
-          assignedTasks: {
-            where: { createdAt: { gte: daysAgo } },
-            select: { id: true, status: true }
-          }
-        }
-      }),
-
-      // Task completion rates
-      prisma.task.groupBy({
-        by: ['assignedAgentId', 'status'],
-        where: whereClause,
-        _count: {
-          id: true
-        }
-      }),
-
-      // Property performance
-      prisma.property.findMany({
-        where: whereClause,
-        select: {
-          id: true,
-          title: true,
-          status: true,
-          viewings: true,
-          assignedAgent: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true
-            }
-          }
-        }
-      })
-    ]);
-
-    res.json({
-      agentStats,
-      taskCompletion,
-      propertyPerformance
-    });
   } catch (error) {
     console.error('Error fetching performance analytics:', error);
     res.status(500).json({ error: 'Failed to fetch performance analytics' });

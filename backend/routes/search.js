@@ -1,230 +1,155 @@
+// backend/routes/search.js
 const express = require('express');
-const { query, validationResult } = require('express-validator');
+const router = express.Router();
 const { PrismaClient } = require('@prisma/client');
 
-const router = express.Router();
 const prisma = new PrismaClient();
 
-// GET /api/search - Universal search across all entities
-router.get('/', [
-  query('q').notEmpty().withMessage('Search query is required'),
-  query('type').optional().isIn(['all', 'properties', 'buyers', 'sellers', 'tasks']).withMessage('Invalid search type')
-], async (req, res) => {
+// GET /api/search - Universal search endpoint
+router.get('/', async (req, res) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+    const { q, type = 'all', limit = 10 } = req.query;
+
+    if (!q || q.trim().length < 2) {
+      return res.status(400).json({ error: 'Search query must be at least 2 characters long' });
     }
 
-    const { q, type = 'all', limit = 10 } = req.query;
-    const searchQuery = q.trim();
+    const searchTerm = q.trim();
     const searchLimit = Math.min(parseInt(limit), 50); // Max 50 results
 
-    let results = {
+    const results = {
       properties: [],
       buyers: [],
       sellers: [],
-      tasks: []
+      tasks: [],
+      query: searchTerm,
+      type
     };
 
-    // Check if query looks like a phone number
-    const isPhoneNumber = /^[\+]?[0-9\s\-\(\)]{7,}$/.test(searchQuery);
-    
-    // Check if query looks like an ID
-    const isId = /^\d+$/.test(searchQuery);
-
-    // Search Properties
+    // Search properties
     if (type === 'all' || type === 'properties') {
-      const propertySearchConditions = {
-        OR: [
-          { title: { contains: searchQuery, mode: 'insensitive' } },
-          { address: { contains: searchQuery, mode: 'insensitive' } },
-          { district: { contains: searchQuery, mode: 'insensitive' } },
-          { description: { contains: searchQuery, mode: 'insensitive' } }
-        ]
-      };
-
-      // Add ID search if query is numeric
-      if (isId) {
-        propertySearchConditions.OR.push({ id: parseInt(searchQuery) });
-      }
-
       results.properties = await prisma.property.findMany({
-        where: propertySearchConditions,
-        take: searchLimit,
-        select: {
-          id: true,
-          title: true,
-          address: true,
-          district: true,
-          propertyType: true,
-          category: true,
-          area: true,
-          rooms: true,
-          status: true,
-          priceEur: true,
-          monthlyRentEur: true,
-          viewings: true,
+        where: {
+          OR: [
+            { title: { contains: searchTerm, mode: 'insensitive' } },
+            { description: { contains: searchTerm, mode: 'insensitive' } },
+            { address: { contains: searchTerm, mode: 'insensitive' } },
+            { city: { contains: searchTerm, mode: 'insensitive' } },
+            { district: { contains: searchTerm, mode: 'insensitive' } },
+            { id: isNaN(parseInt(searchTerm)) ? undefined : parseInt(searchTerm) }
+          ].filter(Boolean)
+        },
+        include: {
           seller: {
             select: {
+              id: true,
               firstName: true,
-              lastName: true
+              lastName: true,
+              phone: true
             }
           },
           assignedAgent: {
             select: {
+              id: true,
               firstName: true,
               lastName: true
             }
           }
         },
-        orderBy: [
-          { viewings: 'desc' },
-          { createdAt: 'desc' }
-        ]
-      });
-    }
-
-    // Search Buyers
-    if (type === 'all' || type === 'buyers') {
-      const buyerSearchConditions = {
-        OR: [
-          { firstName: { contains: searchQuery, mode: 'insensitive' } },
-          { lastName: { contains: searchQuery, mode: 'insensitive' } },
-          { email: { contains: searchQuery, mode: 'insensitive' } },
-          { preferredLocation: { contains: searchQuery, mode: 'insensitive' } }
-        ]
-      };
-
-      // Add phone and ID search
-      if (isPhoneNumber) {
-        buyerSearchConditions.OR.push({ phone: { contains: searchQuery.replace(/\s/g, '') } });
-      }
-      if (isId) {
-        buyerSearchConditions.OR.push({ id: parseInt(searchQuery) });
-      }
-
-      results.buyers = await prisma.buyer.findMany({
-        where: buyerSearchConditions,
         take: searchLimit,
-        select: {
-          id: true,
-          firstName: true,
-          lastName: true,
-          phone: true,
-          email: true,
-          status: true,
-          budgetMin: true,
-          budgetMax: true,
-          preferredLocation: true,
-          propertyType: true,
-          assignedAgent: {
-            select: {
-              firstName: true,
-              lastName: true
-            }
-          }
-        },
         orderBy: { createdAt: 'desc' }
       });
     }
 
-    // Search Sellers
-    if (type === 'all' || type === 'sellers') {
-      const sellerSearchConditions = {
-        OR: [
-          { firstName: { contains: searchQuery, mode: 'insensitive' } },
-          { lastName: { contains: searchQuery, mode: 'insensitive' } },
-          { email: { contains: searchQuery, mode: 'insensitive' } }
-        ]
-      };
-
-      // Add phone and ID search
-      if (isPhoneNumber) {
-        sellerSearchConditions.OR.push({ phone: { contains: searchQuery.replace(/\s/g, '') } });
-      }
-      if (isId) {
-        sellerSearchConditions.OR.push({ id: parseInt(searchQuery) });
-      }
-
-      results.sellers = await prisma.seller.findMany({
-        where: sellerSearchConditions,
+    // Search buyers
+    if (type === 'all' || type === 'buyers') {
+      results.buyers = await prisma.buyer.findMany({
+        where: {
+          OR: [
+            { firstName: { contains: searchTerm, mode: 'insensitive' } },
+            { lastName: { contains: searchTerm, mode: 'insensitive' } },
+            { phone: { contains: searchTerm } },
+            { email: { contains: searchTerm, mode: 'insensitive' } },
+            { id: isNaN(parseInt(searchTerm)) ? undefined : parseInt(searchTerm) }
+          ].filter(Boolean)
+        },
+        include: {
+          assignedAgent: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true
+            }
+          }
+        },
         take: searchLimit,
-        select: {
-          id: true,
-          firstName: true,
-          lastName: true,
-          phone: true,
-          email: true,
-          status: true,
+        orderBy: { createdAt: 'desc' }
+      });
+    }
+
+    // Search sellers
+    if (type === 'all' || type === 'sellers') {
+      results.sellers = await prisma.seller.findMany({
+        where: {
+          OR: [
+            { firstName: { contains: searchTerm, mode: 'insensitive' } },
+            { lastName: { contains: searchTerm, mode: 'insensitive' } },
+            { phone: { contains: searchTerm } },
+            { email: { contains: searchTerm, mode: 'insensitive' } },
+            { id: isNaN(parseInt(searchTerm)) ? undefined : parseInt(searchTerm) }
+          ].filter(Boolean)
+        },
+        include: {
           properties: {
             select: {
               id: true,
               title: true,
+              propertyType: true,
               status: true
-            }
-          },
-          assignedAgent: {
-            select: {
-              firstName: true,
-              lastName: true
-            }
+            },
+            take: 3 // Limit to 3 properties per seller in search results
           }
         },
+        take: searchLimit,
         orderBy: { createdAt: 'desc' }
       });
     }
 
-    // Search Tasks
+    // Search tasks
     if (type === 'all' || type === 'tasks') {
-      const taskSearchConditions = {
-        OR: [
-          { title: { contains: searchQuery, mode: 'insensitive' } },
-          { description: { contains: searchQuery, mode: 'insensitive' } }
-        ]
-      };
-
-      if (isId) {
-        taskSearchConditions.OR.push({ id: parseInt(searchQuery) });
-      }
-
       results.tasks = await prisma.task.findMany({
-        where: taskSearchConditions,
-        take: searchLimit,
-        select: {
-          id: true,
-          title: true,
-          description: true,
-          dueDate: true,
-          priority: true,
-          status: true,
-          taskType: true,
-          buyer: {
+        where: {
+          OR: [
+            { title: { contains: searchTerm, mode: 'insensitive' } },
+            { description: { contains: searchTerm, mode: 'insensitive' } },
+            { id: isNaN(parseInt(searchTerm)) ? undefined : parseInt(searchTerm) }
+          ].filter(Boolean)
+        },
+        include: {
+          assignedAgent: {
             select: {
-              firstName: true,
-              lastName: true
-            }
-          },
-          seller: {
-            select: {
+              id: true,
               firstName: true,
               lastName: true
             }
           },
           property: {
             select: {
+              id: true,
               title: true,
               address: true
             }
           },
-          assignedAgent: {
+          buyer: {
             select: {
+              id: true,
               firstName: true,
               lastName: true
             }
           }
         },
-        orderBy: { dueDate: 'asc' }
+        take: searchLimit,
+        orderBy: { createdAt: 'desc' }
       });
     }
 
@@ -235,14 +160,14 @@ router.get('/', [
                         results.tasks.length;
 
     res.json({
-      query: searchQuery,
-      type,
+      ...results,
       totalResults,
-      results
+      searchTime: new Date().toISOString()
     });
+
   } catch (error) {
     console.error('Error performing search:', error);
-    res.status(500).json({ error: 'Failed to perform search' });
+    res.status(500).json({ error: 'Search failed' });
   }
 });
 
@@ -250,168 +175,235 @@ router.get('/', [
 router.get('/suggestions', async (req, res) => {
   try {
     const { q, type = 'all' } = req.query;
-    
-    if (!q || q.length < 2) {
+
+    if (!q || q.trim().length < 1) {
       return res.json({ suggestions: [] });
     }
 
-    const searchQuery = q.trim();
-    let suggestions = [];
+    const searchTerm = q.trim();
+    const suggestions = [];
 
     // Property suggestions
     if (type === 'all' || type === 'properties') {
-      const propertyTitles = await prisma.property.findMany({
-        where: {
-          title: { contains: searchQuery, mode: 'insensitive' }
-        },
-        take: 5,
-        select: {
-          id: true,
-          title: true,
-          district: true
-        }
-      });
-
-      suggestions.push(...propertyTitles.map(p => ({
-        type: 'property',
-        id: p.id,
-        label: `${p.title} - ${p.district}`,
-        value: p.title
-      })));
-    }
-
-    // Buyer suggestions
-    if (type === 'all' || type === 'buyers') {
-      const buyerNames = await prisma.buyer.findMany({
+      const propertySuggestions = await prisma.property.findMany({
         where: {
           OR: [
-            { firstName: { contains: searchQuery, mode: 'insensitive' } },
-            { lastName: { contains: searchQuery, mode: 'insensitive' } }
+            { title: { contains: searchTerm, mode: 'insensitive' } },
+            { address: { contains: searchTerm, mode: 'insensitive' } },
+            { city: { contains: searchTerm, mode: 'insensitive' } },
+            { district: { contains: searchTerm, mode: 'insensitive' } }
           ]
         },
-        take: 5,
-        select: {
-          id: true,
-          firstName: true,
-          lastName: true,
-          phone: true
-        }
-      });
-
-      suggestions.push(...buyerNames.map(b => ({
-        type: 'buyer',
-        id: b.id,
-        label: `${b.firstName} ${b.lastName} - ${b.phone}`,
-        value: `${b.firstName} ${b.lastName}`
-      })));
-    }
-
-    // District suggestions
-    if (type === 'all' || type === 'properties') {
-      const districts = await prisma.property.groupBy({
-        by: ['district'],
-        where: {
-          district: { contains: searchQuery, mode: 'insensitive' }
-        },
-        take: 3
-      });
-
-      suggestions.push(...districts.map(d => ({
-        type: 'district',
-        label: d.district,
-        value: d.district
-      })));
-    }
-
-    // Remove duplicates and limit results
-    const uniqueSuggestions = suggestions
-      .filter((suggestion, index, self) => 
-        index === self.findIndex(s => s.label === suggestion.label)
-      )
-      .slice(0, 10);
-
-    res.json({ suggestions: uniqueSuggestions });
-  } catch (error) {
-    console.error('Error getting search suggestions:', error);
-    res.status(500).json({ error: 'Failed to get search suggestions' });
-  }
-});
-
-// GET /api/search/quick/:id - Quick search by ID across all entities
-router.get('/quick/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const entityId = parseInt(id);
-
-    if (isNaN(entityId)) {
-      return res.status(400).json({ error: 'Invalid ID format' });
-    }
-
-    // Search across all entities
-    const [property, buyer, seller, task] = await Promise.all([
-      prisma.property.findUnique({
-        where: { id: entityId },
         select: {
           id: true,
           title: true,
           address: true,
-          district: true,
-          propertyType: true,
-          status: true,
-          priceEur: true,
-          monthlyRentEur: true
-        }
-      }),
-      prisma.buyer.findUnique({
-        where: { id: entityId },
-        select: {
-          id: true,
-          firstName: true,
-          lastName: true,
-          phone: true,
-          status: true
-        }
-      }),
-      prisma.seller.findUnique({
-        where: { id: entityId },
-        select: {
-          id: true,
-          firstName: true,
-          lastName: true,
-          phone: true,
-          status: true
-        }
-      }),
-      prisma.task.findUnique({
-        where: { id: entityId },
-        select: {
-          id: true,
-          title: true,
-          dueDate: true,
-          priority: true,
-          status: true
-        }
-      })
-    ]);
+          city: true,
+          district: true
+        },
+        take: 5
+      });
 
-    // Return the first found entity
-    if (property) {
-      return res.json({ type: 'property', entity: property });
-    }
-    if (buyer) {
-      return res.json({ type: 'buyer', entity: buyer });
-    }
-    if (seller) {
-      return res.json({ type: 'seller', entity: seller });
-    }
-    if (task) {
-      return res.json({ type: 'task', entity: task });
+      propertySuggestions.forEach(property => {
+        suggestions.push({
+          type: 'property',
+          id: property.id,
+          text: property.title,
+          subtext: `${property.address}, ${property.city}`,
+          icon: '🏠'
+        });
+      });
     }
 
-    res.status(404).json({ error: 'No entity found with this ID' });
+    // People suggestions (buyers and sellers)
+    if (type === 'all' || type === 'buyers' || type === 'sellers') {
+      // Buyers
+      if (type === 'all' || type === 'buyers') {
+        const buyerSuggestions = await prisma.buyer.findMany({
+          where: {
+            OR: [
+              { firstName: { contains: searchTerm, mode: 'insensitive' } },
+              { lastName: { contains: searchTerm, mode: 'insensitive' } },
+              { phone: { contains: searchTerm } }
+            ]
+          },
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            phone: true,
+            status: true
+          },
+          take: 3
+        });
+
+        buyerSuggestions.forEach(buyer => {
+          suggestions.push({
+            type: 'buyer',
+            id: buyer.id,
+            text: `${buyer.firstName} ${buyer.lastName}`,
+            subtext: buyer.phone,
+            icon: '👤'
+          });
+        });
+      }
+
+      // Sellers
+      if (type === 'all' || type === 'sellers') {
+        const sellerSuggestions = await prisma.seller.findMany({
+          where: {
+            OR: [
+              { firstName: { contains: searchTerm, mode: 'insensitive' } },
+              { lastName: { contains: searchTerm, mode: 'insensitive' } },
+              { phone: { contains: searchTerm } }
+            ]
+          },
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            phone: true
+          },
+          take: 3
+        });
+
+        sellerSuggestions.forEach(seller => {
+          suggestions.push({
+            type: 'seller',
+            id: seller.id,
+            text: `${seller.firstName} ${seller.lastName}`,
+            subtext: seller.phone,
+            icon: '🏪'
+          });
+        });
+      }
+    }
+
+    res.json({ 
+      suggestions: suggestions.slice(0, 10), // Limit to 10 suggestions
+      query: searchTerm 
+    });
+
   } catch (error) {
-    console.error('Error performing quick search:', error);
-    res.status(500).json({ error: 'Failed to perform quick search' });
+    console.error('Error getting suggestions:', error);
+    res.status(500).json({ error: 'Failed to get suggestions' });
+  }
+});
+
+// GET /api/search/quick - Quick ID-based search
+router.get('/quick', async (req, res) => {
+  try {
+    const { id, type } = req.query;
+
+    if (!id || !type) {
+      return res.status(400).json({ error: 'ID and type are required' });
+    }
+
+    const numericId = parseInt(id);
+    if (isNaN(numericId)) {
+      return res.status(400).json({ error: 'Invalid ID format' });
+    }
+
+    let result = null;
+
+    switch (type) {
+      case 'property':
+        result = await prisma.property.findUnique({
+          where: { id: numericId },
+          include: {
+            seller: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                phone: true
+              }
+            },
+            assignedAgent: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true
+              }
+            },
+            tenants: true
+          }
+        });
+        break;
+
+      case 'buyer':
+        result = await prisma.buyer.findUnique({
+          where: { id: numericId },
+          include: {
+            assignedAgent: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true
+              }
+            }
+          }
+        });
+        break;
+
+      case 'seller':
+        result = await prisma.seller.findUnique({
+          where: { id: numericId },
+          include: {
+            properties: {
+              select: {
+                id: true,
+                title: true,
+                propertyType: true,
+                status: true
+              }
+            }
+          }
+        });
+        break;
+
+      case 'task':
+        result = await prisma.task.findUnique({
+          where: { id: numericId },
+          include: {
+            assignedAgent: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true
+              }
+            },
+            property: {
+              select: {
+                id: true,
+                title: true,
+                address: true
+              }
+            },
+            buyer: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true
+              }
+            }
+          }
+        });
+        break;
+
+      default:
+        return res.status(400).json({ error: 'Invalid type' });
+    }
+
+    if (!result) {
+      return res.status(404).json({ error: `${type} not found` });
+    }
+
+    res.json({ result, type });
+
+  } catch (error) {
+    console.error('Error in quick search:', error);
+    res.status(500).json({ error: 'Quick search failed' });
   }
 });
 
