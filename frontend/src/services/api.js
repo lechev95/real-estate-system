@@ -1,8 +1,8 @@
-// frontend/src/services/api.js
+// Enhanced API Service with Better Error Handling and Data Cleaning
 const API_BASE_URL = 'https://real-estate-crm-api-cwlr.onrender.com/api';
 
-// Generic API call function
-const apiCall = async (endpoint, options = {}) => {
+// Enhanced API call function with retry logic
+const apiCall = async (endpoint, options = {}, retries = 2) => {
   const url = `${API_BASE_URL}${endpoint}`;
   const config = {
     headers: {
@@ -12,116 +12,300 @@ const apiCall = async (endpoint, options = {}) => {
     ...options,
   };
 
-  try {
-    const response = await fetch(url, config);
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      console.log(`API Call [Attempt ${attempt + 1}]:`, config.method || 'GET', url);
+      
+      const response = await fetch(url, config);
+      
+      // Log response status for debugging
+      console.log(`API Response [${response.status}]:`, response.statusText);
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        console.error('API Error Details:', errorData);
+        
+        throw new Error(`${response.status}: ${errorData.error || errorData.details || 'Unknown error'}`);
+      }
+      
+      const data = await response.json();
+      console.log('API Success:', data);
+      return data;
+    } catch (error) {
+      console.error(`API call failed (attempt ${attempt + 1}):`, error);
+      
+      // If it's the last attempt or not a network error, throw
+      if (attempt === retries || !error.message.includes('fetch')) {
+        throw error;
+      }
+      
+      // Wait before retry (exponential backoff)
+      await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, attempt)));
     }
-    
-    const data = await response.json();
-    return data;
-  } catch (error) {
-    console.error('API call failed:', error);
-    throw error;
   }
 };
 
-// Properties API
+// Data cleaning utilities
+const cleanPropertyData = (data) => {
+  const cleaned = { ...data };
+  
+  // Remove empty strings and convert to null
+  Object.keys(cleaned).forEach(key => {
+    if (cleaned[key] === '' || cleaned[key] === undefined) {
+      cleaned[key] = null;
+    }
+    
+    // Trim strings
+    if (typeof cleaned[key] === 'string' && cleaned[key] !== null) {
+      cleaned[key] = cleaned[key].trim();
+      if (cleaned[key] === '') {
+        cleaned[key] = null;
+      }
+    }
+  });
+  
+  // Ensure required fields are present
+  if (!cleaned.title) {
+    throw new Error('Title is required');
+  }
+  if (!cleaned.address) {
+    throw new Error('Address is required');
+  }
+  if (!cleaned.area || isNaN(parseInt(cleaned.area))) {
+    throw new Error('Valid area is required');
+  }
+  if (!cleaned.rooms || isNaN(parseInt(cleaned.rooms))) {
+    throw new Error('Valid number of rooms is required');
+  }
+  
+  // Convert numeric fields
+  cleaned.area = parseInt(cleaned.area);
+  cleaned.rooms = parseInt(cleaned.rooms);
+  if (cleaned.floor) cleaned.floor = parseInt(cleaned.floor);
+  if (cleaned.totalFloors) cleaned.totalFloors = parseInt(cleaned.totalFloors);
+  if (cleaned.yearBuilt) cleaned.yearBuilt = parseInt(cleaned.yearBuilt);
+  
+  // Convert price fields
+  if (cleaned.priceEur) cleaned.priceEur = parseFloat(cleaned.priceEur);
+  if (cleaned.monthlyRentEur) cleaned.monthlyRentEur = parseFloat(cleaned.monthlyRentEur);
+  
+  // Validate type-specific requirements
+  if (cleaned.propertyType === 'sale' && (!cleaned.priceEur || cleaned.priceEur <= 0)) {
+    throw new Error('Valid price is required for sale properties');
+  }
+  
+  if ((cleaned.propertyType === 'rent' || cleaned.propertyType === 'managed') && 
+      (!cleaned.monthlyRentEur || cleaned.monthlyRentEur <= 0)) {
+    throw new Error('Valid monthly rent is required for rental properties');
+  }
+  
+  return cleaned;
+};
+
+const cleanBuyerData = (data) => {
+  const cleaned = { ...data };
+  
+  // Remove empty strings and convert to null
+  Object.keys(cleaned).forEach(key => {
+    if (cleaned[key] === '' || cleaned[key] === undefined) {
+      cleaned[key] = null;
+    }
+    
+    // Trim strings
+    if (typeof cleaned[key] === 'string' && cleaned[key] !== null) {
+      cleaned[key] = cleaned[key].trim();
+      if (cleaned[key] === '') {
+        cleaned[key] = null;
+      }
+    }
+  });
+  
+  // Ensure required fields are present
+  if (!cleaned.firstName) {
+    throw new Error('First name is required');
+  }
+  if (!cleaned.lastName) {
+    throw new Error('Last name is required');
+  }
+  if (!cleaned.phone) {
+    throw new Error('Phone is required');
+  }
+  
+  // Validate email if provided
+  if (cleaned.email) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(cleaned.email)) {
+      throw new Error('Invalid email format');
+    }
+  }
+  
+  // Convert numeric fields
+  if (cleaned.budgetMin) cleaned.budgetMin = parseFloat(cleaned.budgetMin);
+  if (cleaned.budgetMax) cleaned.budgetMax = parseFloat(cleaned.budgetMax);
+  if (cleaned.preferredRooms) cleaned.preferredRooms = parseInt(cleaned.preferredRooms);
+  
+  // Validate budget range
+  if (cleaned.budgetMin && cleaned.budgetMax && cleaned.budgetMin > cleaned.budgetMax) {
+    throw new Error('Minimum budget cannot be greater than maximum budget');
+  }
+  
+  // Handle preferred areas array
+  if (cleaned.preferredAreas && typeof cleaned.preferredAreas === 'string') {
+    cleaned.preferredAreas = cleaned.preferredAreas.split(',').map(area => area.trim()).filter(area => area);
+  }
+  
+  return cleaned;
+};
+
+// Enhanced Properties API
 export const propertiesAPI = {
-  // Get all properties
   getAll: async (filters = {}) => {
-    const queryParams = new URLSearchParams(filters).toString();
-    const endpoint = queryParams ? `/properties?${queryParams}` : '/properties';
-    return apiCall(endpoint);
+    try {
+      const queryParams = new URLSearchParams(filters).toString();
+      const endpoint = queryParams ? `/properties?${queryParams}` : '/properties';
+      return await apiCall(endpoint);
+    } catch (error) {
+      console.error('Failed to fetch properties:', error);
+      throw new Error(`Failed to load properties: ${error.message}`);
+    }
   },
 
-  // Get single property
   getById: async (id) => {
-    return apiCall(`/properties/${id}`);
+    try {
+      if (!id || isNaN(parseInt(id))) {
+        throw new Error('Invalid property ID');
+      }
+      return await apiCall(`/properties/${id}`);
+    } catch (error) {
+      console.error('Failed to fetch property:', error);
+      throw new Error(`Failed to load property: ${error.message}`);
+    }
   },
 
-  // Create new property
-  create: async (propertyData) => {
-    return apiCall('/properties', {
-      method: 'POST',
-      body: JSON.stringify(propertyData),
-    });
+  create: async (data) => {
+    try {
+      const cleanedData = cleanPropertyData(data);
+      console.log('Creating property with cleaned data:', cleanedData);
+      return await apiCall('/properties', {
+        method: 'POST',
+        body: JSON.stringify(cleanedData),
+      });
+    } catch (error) {
+      console.error('Failed to create property:', error);
+      throw new Error(`Failed to create property: ${error.message}`);
+    }
   },
 
-  // Update property
-  update: async (id, propertyData) => {
-    return apiCall(`/properties/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(propertyData),
-    });
+  update: async (id, data) => {
+    try {
+      if (!id || isNaN(parseInt(id))) {
+        throw new Error('Invalid property ID');
+      }
+      const cleanedData = cleanPropertyData(data);
+      console.log('Updating property with cleaned data:', cleanedData);
+      return await apiCall(`/properties/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(cleanedData),
+      });
+    } catch (error) {
+      console.error('Failed to update property:', error);
+      throw new Error(`Failed to update property: ${error.message}`);
+    }
   },
 
-  // Delete property
   delete: async (id) => {
-    return apiCall(`/properties/${id}`, {
-      method: 'DELETE',
-    });
+    try {
+      if (!id || isNaN(parseInt(id))) {
+        throw new Error('Invalid property ID');
+      }
+      return await apiCall(`/properties/${id}`, {
+        method: 'DELETE',
+      });
+    } catch (error) {
+      console.error('Failed to delete property:', error);
+      throw new Error(`Failed to delete property: ${error.message}`);
+    }
   },
 };
 
-// Buyers API
+// Enhanced Buyers API
 export const buyersAPI = {
-  getAll: async () => apiCall('/buyers'),
-  getById: async (id) => apiCall(`/buyers/${id}`),
-  create: async (buyerData) => apiCall('/buyers', {
-    method: 'POST',
-    body: JSON.stringify(buyerData),
-  }),
-  update: async (id, buyerData) => apiCall(`/buyers/${id}`, {
-    method: 'PUT',
-    body: JSON.stringify(buyerData),
-  }),
-  delete: async (id) => apiCall(`/buyers/${id}`, { method: 'DELETE' }),
-};
+  getAll: async (filters = {}) => {
+    try {
+      const queryParams = new URLSearchParams(filters).toString();
+      const endpoint = queryParams ? `/buyers?${queryParams}` : '/buyers';
+      return await apiCall(endpoint);
+    } catch (error) {
+      console.error('Failed to fetch buyers:', error);
+      throw new Error(`Failed to load buyers: ${error.message}`);
+    }
+  },
 
-// Sellers API
-export const sellersAPI = {
-  getAll: async () => apiCall('/sellers'),
-  getById: async (id) => apiCall(`/sellers/${id}`),
-  create: async (sellerData) => apiCall('/sellers', {
-    method: 'POST',
-    body: JSON.stringify(sellerData),
-  }),
-  update: async (id, sellerData) => apiCall(`/sellers/${id}`, {
-    method: 'PUT',
-    body: JSON.stringify(sellerData),
-  }),
-  delete: async (id) => apiCall(`/sellers/${id}`, { method: 'DELETE' }),
-};
+  getById: async (id) => {
+    try {
+      if (!id || isNaN(parseInt(id))) {
+        throw new Error('Invalid buyer ID');
+      }
+      return await apiCall(`/buyers/${id}`);
+    } catch (error) {
+      console.error('Failed to fetch buyer:', error);
+      throw new Error(`Failed to load buyer: ${error.message}`);
+    }
+  },
 
-// Tasks API
-export const tasksAPI = {
-  getAll: async () => apiCall('/tasks'),
-  getById: async (id) => apiCall(`/tasks/${id}`),
-  create: async (taskData) => apiCall('/tasks', {
-    method: 'POST',
-    body: JSON.stringify(taskData),
-  }),
-  update: async (id, taskData) => apiCall(`/tasks/${id}`, {
-    method: 'PUT',
-    body: JSON.stringify(taskData),
-  }),
-  delete: async (id) => apiCall(`/tasks/${id}`, { method: 'DELETE' }),
-  markComplete: async (id) => apiCall(`/tasks/${id}/complete`, {
-    method: 'PATCH',
-  }),
-};
+  create: async (data) => {
+    try {
+      const cleanedData = cleanBuyerData(data);
+      console.log('Creating buyer with cleaned data:', cleanedData);
+      return await apiCall('/buyers', {
+        method: 'POST',
+        body: JSON.stringify(cleanedData),
+      });
+    } catch (error) {
+      console.error('Failed to create buyer:', error);
+      throw new Error(`Failed to create buyer: ${error.message}`);
+    }
+  },
 
-// Search API
-export const searchAPI = {
-  search: async (query, type = 'all') => {
-    return apiCall(`/search?q=${encodeURIComponent(query)}&type=${type}`);
+  update: async (id, data) => {
+    try {
+      if (!id || isNaN(parseInt(id))) {
+        throw new Error('Invalid buyer ID');
+      }
+      const cleanedData = cleanBuyerData(data);
+      console.log('Updating buyer with cleaned data:', cleanedData);
+      return await apiCall(`/buyers/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(cleanedData),
+      });
+    } catch (error) {
+      console.error('Failed to update buyer:', error);
+      throw new Error(`Failed to update buyer: ${error.message}`);
+    }
+  },
+
+  delete: async (id) => {
+    try {
+      if (!id || isNaN(parseInt(id))) {
+        throw new Error('Invalid buyer ID');
+      }
+      return await apiCall(`/buyers/${id}`, {
+        method: 'DELETE',
+      });
+    } catch (error) {
+      console.error('Failed to delete buyer:', error);
+      throw new Error(`Failed to delete buyer: ${error.message}`);
+    }
   },
 };
 
-// Analytics API
-export const analyticsAPI = {
-  getDashboard: async () => apiCall('/analytics/dashboard'),
-  getKPIs: async () => apiCall('/analytics/kpis'),
+// Health check function
+export const healthCheck = async () => {
+  try {
+    const response = await apiCall('/health', {}, 0); // No retries for health check
+    return response;
+  } catch (error) {
+    console.error('Health check failed:', error);
+    throw new Error(`API is not responding: ${error.message}`);
+  }
 };

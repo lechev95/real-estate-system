@@ -1,7 +1,11 @@
 import React, { useState, useEffect } from 'react';
+// В началото на App.jsx добавете:
+import { propertiesAPI, buyersAPI } from './services/api';
 
-// API Configuration
-const API_BASE_URL = 'https://real-estate-crm-api-cwlr.onrender.com/api';
+// // Премахнете embedded API код
+
+// // API Configuration
+// const API_BASE_URL = 'https://real-estate-crm-api-cwlr.onrender.com/api';
 
 // API Service Functions
 const apiCall = async (endpoint, options = {}) => {

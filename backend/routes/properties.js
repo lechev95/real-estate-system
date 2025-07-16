@@ -1,4 +1,4 @@
-// backend/routes/properties.js
+// backend/routes/properties.js - FIXED VERSION
 const express = require('express');
 const router = express.Router();
 const { PrismaClient } = require('@prisma/client');
@@ -104,7 +104,10 @@ router.get('/', async (req, res) => {
     res.json({ properties, pagination });
   } catch (error) {
     console.error('Error fetching properties:', error);
-    res.status(500).json({ error: 'Failed to fetch properties' });
+    res.status(500).json({ 
+      error: 'Failed to fetch properties',
+      details: error.message 
+    });
   }
 });
 
@@ -112,6 +115,10 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    
+    if (!id || isNaN(parseInt(id))) {
+      return res.status(400).json({ error: 'Invalid property ID' });
+    }
     
     const property = await prisma.property.findUnique({
       where: { id: parseInt(id) },
@@ -144,7 +151,10 @@ router.get('/:id', async (req, res) => {
     res.json(property);
   } catch (error) {
     console.error('Error fetching property:', error);
-    res.status(500).json({ error: 'Failed to fetch property' });
+    res.status(500).json({ 
+      error: 'Failed to fetch property',
+      details: error.message 
+    });
   }
 });
 
@@ -176,20 +186,57 @@ router.post('/', async (req, res) => {
       assignedAgentId
     } = req.body;
 
-    // Validation
-    if (!title || !propertyType || !category || !address || !city || !area || !rooms) {
+    console.log('Creating property with data:', req.body);
+
+    // Enhanced validation
+    const errors = [];
+    
+    if (!title || title.trim().length === 0) {
+      errors.push('Title is required');
+    }
+    
+    if (!propertyType || !['sale', 'rent', 'managed'].includes(propertyType)) {
+      errors.push('Valid property type is required (sale, rent, managed)');
+    }
+    
+    if (!category || !['apartment', 'house', 'office', 'commercial'].includes(category)) {
+      errors.push('Valid category is required (apartment, house, office, commercial)');
+    }
+    
+    if (!address || address.trim().length === 0) {
+      errors.push('Address is required');
+    }
+    
+    if (!city || city.trim().length === 0) {
+      errors.push('City is required');
+    }
+    
+    if (!area || isNaN(parseInt(area)) || parseInt(area) <= 0) {
+      errors.push('Valid area is required');
+    }
+    
+    if (!rooms || isNaN(parseInt(rooms)) || parseInt(rooms) <= 0) {
+      errors.push('Valid number of rooms is required');
+    }
+
+    // Type-specific validation
+    if (propertyType === 'sale') {
+      if (!priceEur || isNaN(parseFloat(priceEur)) || parseFloat(priceEur) <= 0) {
+        errors.push('Valid price is required for sale properties');
+      }
+    }
+
+    if (propertyType === 'rent' || propertyType === 'managed') {
+      if (!monthlyRentEur || isNaN(parseFloat(monthlyRentEur)) || parseFloat(monthlyRentEur) <= 0) {
+        errors.push('Valid monthly rent is required for rental properties');
+      }
+    }
+
+    if (errors.length > 0) {
       return res.status(400).json({ 
-        error: 'Missing required fields: title, propertyType, category, address, city, area, rooms' 
+        error: 'Validation failed',
+        details: errors 
       });
-    }
-
-    // Additional validation based on property type
-    if (propertyType === 'sale' && !priceEur) {
-      return res.status(400).json({ error: 'Sale properties require priceEur' });
-    }
-
-    if ((propertyType === 'rent' || propertyType === 'managed') && !monthlyRentEur) {
-      return res.status(400).json({ error: 'Rental properties require monthlyRentEur' });
     }
 
     // Calculate price per sqm for sale properties
@@ -198,31 +245,35 @@ router.post('/', async (req, res) => {
       calculatedPricePerSqm = Math.round(parseFloat(priceEur) / parseFloat(area)).toString();
     }
 
+    // Prepare data for database
     const propertyData = {
       propertyType,
       category,
-      title,
-      description,
-      address,
-      city,
-      district,
+      title: title.trim(),
+      description: description ? description.trim() : null,
+      address: address.trim(),
+      city: city.trim(),
+      district: district ? district.trim() : null,
       area: parseInt(area),
       rooms: parseInt(rooms),
       floor: floor ? parseInt(floor) : null,
       totalFloors: totalFloors ? parseInt(totalFloors) : null,
       yearBuilt: yearBuilt ? parseInt(yearBuilt) : null,
-      exposure,
-      heating,
-      priceEur: priceEur ? priceEur.toString() : null,
+      exposure: exposure || null,
+      heating: heating || null,
+      priceEur: priceEur ? parseFloat(priceEur).toString() : null,
       pricePerSqm: pricePerSqm || calculatedPricePerSqm,
-      monthlyRentEur: monthlyRentEur ? monthlyRentEur.toString() : null,
-      managementFeePercent: managementFeePercent ? managementFeePercent.toString() : null,
-      rentalConditions,
-      status,
+      monthlyRentEur: monthlyRentEur ? parseFloat(monthlyRentEur).toString() : null,
+      managementFeePercent: managementFeePercent ? parseFloat(managementFeePercent).toString() : null,
+      rentalConditions: rentalConditions || null,
+      status: status || 'available',
       viewings: 0,
+      lastViewing: null,
       sellerId: sellerId ? parseInt(sellerId) : 1, // Default to first seller
       assignedAgentId: assignedAgentId ? parseInt(assignedAgentId) : 1 // Default to first agent
     };
+
+    console.log('Processed property data:', propertyData);
 
     const property = await prisma.property.create({
       data: propertyData,
@@ -248,10 +299,14 @@ router.post('/', async (req, res) => {
       }
     });
 
+    console.log('Created property:', property.id);
     res.status(201).json(property);
   } catch (error) {
     console.error('Error creating property:', error);
-    res.status(500).json({ error: 'Failed to create property' });
+    res.status(500).json({ 
+      error: 'Failed to create property',
+      details: error.message 
+    });
   }
 });
 
@@ -261,37 +316,155 @@ router.put('/:id', async (req, res) => {
     const { id } = req.params;
     const updateData = { ...req.body };
 
-    // Convert numeric fields
-    if (updateData.area) updateData.area = parseInt(updateData.area);
-    if (updateData.rooms) updateData.rooms = parseInt(updateData.rooms);
-    if (updateData.floor) updateData.floor = parseInt(updateData.floor);
-    if (updateData.totalFloors) updateData.totalFloors = parseInt(updateData.totalFloors);
-    if (updateData.yearBuilt) updateData.yearBuilt = parseInt(updateData.yearBuilt);
-    if (updateData.sellerId) updateData.sellerId = parseInt(updateData.sellerId);
-    if (updateData.assignedAgentId) updateData.assignedAgentId = parseInt(updateData.assignedAgentId);
+    console.log('Updating property', id, 'with data:', updateData);
 
-    // Convert string fields
-    if (updateData.priceEur) updateData.priceEur = updateData.priceEur.toString();
-    if (updateData.monthlyRentEur) updateData.monthlyRentEur = updateData.monthlyRentEur.toString();
-    if (updateData.managementFeePercent) updateData.managementFeePercent = updateData.managementFeePercent.toString();
+    if (!id || isNaN(parseInt(id))) {
+      return res.status(400).json({ error: 'Invalid property ID' });
+    }
+
+    // Check if property exists
+    const existingProperty = await prisma.property.findUnique({
+      where: { id: parseInt(id) }
+    });
+
+    if (!existingProperty) {
+      return res.status(404).json({ error: 'Property not found' });
+    }
+
+    // Validate and clean data
+    const cleanData = {};
+    
+    if (updateData.title !== undefined) {
+      if (!updateData.title || updateData.title.trim().length === 0) {
+        return res.status(400).json({ error: 'Title cannot be empty' });
+      }
+      cleanData.title = updateData.title.trim();
+    }
+
+    if (updateData.propertyType !== undefined) {
+      if (!['sale', 'rent', 'managed'].includes(updateData.propertyType)) {
+        return res.status(400).json({ error: 'Invalid property type' });
+      }
+      cleanData.propertyType = updateData.propertyType;
+    }
+
+    if (updateData.category !== undefined) {
+      if (!['apartment', 'house', 'office', 'commercial'].includes(updateData.category)) {
+        return res.status(400).json({ error: 'Invalid category' });
+      }
+      cleanData.category = updateData.category;
+    }
+
+    if (updateData.address !== undefined) {
+      if (!updateData.address || updateData.address.trim().length === 0) {
+        return res.status(400).json({ error: 'Address cannot be empty' });
+      }
+      cleanData.address = updateData.address.trim();
+    }
+
+    if (updateData.city !== undefined) {
+      if (!updateData.city || updateData.city.trim().length === 0) {
+        return res.status(400).json({ error: 'City cannot be empty' });
+      }
+      cleanData.city = updateData.city.trim();
+    }
+
+    if (updateData.district !== undefined) {
+      cleanData.district = updateData.district ? updateData.district.trim() : null;
+    }
+
+    if (updateData.area !== undefined) {
+      const area = parseInt(updateData.area);
+      if (isNaN(area) || area <= 0) {
+        return res.status(400).json({ error: 'Valid area is required' });
+      }
+      cleanData.area = area;
+    }
+
+    if (updateData.rooms !== undefined) {
+      const rooms = parseInt(updateData.rooms);
+      if (isNaN(rooms) || rooms <= 0) {
+        return res.status(400).json({ error: 'Valid number of rooms is required' });
+      }
+      cleanData.rooms = rooms;
+    }
+
+    if (updateData.floor !== undefined) {
+      cleanData.floor = updateData.floor ? parseInt(updateData.floor) : null;
+    }
+
+    if (updateData.totalFloors !== undefined) {
+      cleanData.totalFloors = updateData.totalFloors ? parseInt(updateData.totalFloors) : null;
+    }
+
+    if (updateData.yearBuilt !== undefined) {
+      cleanData.yearBuilt = updateData.yearBuilt ? parseInt(updateData.yearBuilt) : null;
+    }
+
+    if (updateData.exposure !== undefined) {
+      cleanData.exposure = updateData.exposure || null;
+    }
+
+    if (updateData.heating !== undefined) {
+      cleanData.heating = updateData.heating || null;
+    }
+
+    if (updateData.priceEur !== undefined) {
+      if (updateData.priceEur && (isNaN(parseFloat(updateData.priceEur)) || parseFloat(updateData.priceEur) <= 0)) {
+        return res.status(400).json({ error: 'Invalid price' });
+      }
+      cleanData.priceEur = updateData.priceEur ? parseFloat(updateData.priceEur).toString() : null;
+    }
+
+    if (updateData.monthlyRentEur !== undefined) {
+      if (updateData.monthlyRentEur && (isNaN(parseFloat(updateData.monthlyRentEur)) || parseFloat(updateData.monthlyRentEur) <= 0)) {
+        return res.status(400).json({ error: 'Invalid monthly rent' });
+      }
+      cleanData.monthlyRentEur = updateData.monthlyRentEur ? parseFloat(updateData.monthlyRentEur).toString() : null;
+    }
+
+    if (updateData.managementFeePercent !== undefined) {
+      cleanData.managementFeePercent = updateData.managementFeePercent ? parseFloat(updateData.managementFeePercent).toString() : null;
+    }
+
+    if (updateData.rentalConditions !== undefined) {
+      cleanData.rentalConditions = updateData.rentalConditions || null;
+    }
+
+    if (updateData.description !== undefined) {
+      cleanData.description = updateData.description ? updateData.description.trim() : null;
+    }
+
+    if (updateData.status !== undefined) {
+      if (!['available', 'rented', 'managed', 'sold'].includes(updateData.status)) {
+        return res.status(400).json({ error: 'Invalid status' });
+      }
+      cleanData.status = updateData.status;
+    }
+
+    if (updateData.sellerId !== undefined) {
+      cleanData.sellerId = updateData.sellerId ? parseInt(updateData.sellerId) : null;
+    }
+
+    if (updateData.assignedAgentId !== undefined) {
+      cleanData.assignedAgentId = updateData.assignedAgentId ? parseInt(updateData.assignedAgentId) : null;
+    }
 
     // Recalculate price per sqm if needed
-    if ((updateData.priceEur || updateData.area) && updateData.propertyType === 'sale') {
-      const currentProperty = await prisma.property.findUnique({
-        where: { id: parseInt(id) }
-      });
+    if (cleanData.priceEur !== undefined || cleanData.area !== undefined) {
+      const finalPrice = cleanData.priceEur || existingProperty.priceEur;
+      const finalArea = cleanData.area || existingProperty.area;
       
-      const newPrice = updateData.priceEur || currentProperty.priceEur;
-      const newArea = updateData.area || currentProperty.area;
-      
-      if (newPrice && newArea) {
-        updateData.pricePerSqm = Math.round(parseFloat(newPrice) / parseFloat(newArea)).toString();
+      if (finalPrice && finalArea && (cleanData.propertyType === 'sale' || existingProperty.propertyType === 'sale')) {
+        cleanData.pricePerSqm = Math.round(parseFloat(finalPrice) / parseFloat(finalArea)).toString();
       }
     }
 
+    console.log('Clean data for update:', cleanData);
+
     const property = await prisma.property.update({
       where: { id: parseInt(id) },
-      data: updateData,
+      data: cleanData,
       include: {
         seller: {
           select: {
@@ -314,13 +487,14 @@ router.put('/:id', async (req, res) => {
       }
     });
 
+    console.log('Updated property:', property.id);
     res.json(property);
   } catch (error) {
     console.error('Error updating property:', error);
-    if (error.code === 'P2025') {
-      return res.status(404).json({ error: 'Property not found' });
-    }
-    res.status(500).json({ error: 'Failed to update property' });
+    res.status(500).json({ 
+      error: 'Failed to update property',
+      details: error.message 
+    });
   }
 });
 
@@ -328,6 +502,10 @@ router.put('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
+
+    if (!id || isNaN(parseInt(id))) {
+      return res.status(400).json({ error: 'Invalid property ID' });
+    }
 
     // Check if property exists and has tenants
     const property = await prisma.property.findUnique({
@@ -351,13 +529,17 @@ router.delete('/:id', async (req, res) => {
       where: { id: parseInt(id) }
     });
 
+    console.log('Deleted property:', id);
     res.json({ message: 'Property deleted successfully' });
   } catch (error) {
     console.error('Error deleting property:', error);
     if (error.code === 'P2025') {
       return res.status(404).json({ error: 'Property not found' });
     }
-    res.status(500).json({ error: 'Failed to delete property' });
+    res.status(500).json({ 
+      error: 'Failed to delete property',
+      details: error.message 
+    });
   }
 });
 
@@ -365,6 +547,10 @@ router.delete('/:id', async (req, res) => {
 router.patch('/:id/viewings', async (req, res) => {
   try {
     const { id } = req.params;
+
+    if (!id || isNaN(parseInt(id))) {
+      return res.status(400).json({ error: 'Invalid property ID' });
+    }
 
     const property = await prisma.property.update({
       where: { id: parseInt(id) },
@@ -399,7 +585,10 @@ router.patch('/:id/viewings', async (req, res) => {
     if (error.code === 'P2025') {
       return res.status(404).json({ error: 'Property not found' });
     }
-    res.status(500).json({ error: 'Failed to update viewings' });
+    res.status(500).json({ 
+      error: 'Failed to update viewings',
+      details: error.message 
+    });
   }
 });
 
