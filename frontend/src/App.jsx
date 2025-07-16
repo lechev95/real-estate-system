@@ -1,54 +1,16 @@
 import React, { useState, useEffect } from 'react';
-// В началото на App.jsx добавете:
 import { propertiesAPI, buyersAPI } from './services/api';
-
-// Премахнете embedded API код
-
-// API Configuration
-const API_BASE_URL = 'https://real-estate-crm-api-cwlr.onrender.com/api';
-
-// API Service Functions
-const apiCall = async (endpoint, options = {}) => {
-  const url = `${API_BASE_URL}${endpoint}`;
-  const config = {
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
-    ...options,
-  };
-
-  try {
-    const response = await fetch(url, config);
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    
-    const data = await response.json();
-    return data;
-  } catch (error) {
-    console.error('API call failed:', error);
-    throw error;
-  }
-};
-
-const propertiesAPI = {
-  getAll: async () => apiCall('/properties'),
-  create: async (data) => apiCall('/properties', { method: 'POST', body: JSON.stringify(data) }),
-  update: async (id, data) => apiCall(`/properties/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-  delete: async (id) => apiCall(`/properties/${id}`, { method: 'DELETE' }),
-};
-
-const buyersAPI = {
-  getAll: async () => apiCall('/buyers'),
-  create: async (data) => apiCall('/buyers', { method: 'POST', body: JSON.stringify(data) }),
-  update: async (id, data) => apiCall(`/buyers/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-  delete: async (id) => apiCall(`/buyers/${id}`, { method: 'DELETE' }),
-};
 
 // Exchange rate
 const EUR_TO_BGN_RATE = 1.95583;
+
+// Global styles (including keyframes)
+const globalStyles = `
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+`;
 
 // Inline Styles for reliable rendering
 const styles = {
@@ -89,7 +51,8 @@ const styles = {
     border: '1px solid #d1d5db',
     borderRadius: '0.5rem',
     backgroundColor: 'white',
-    fontSize: '0.875rem'
+    fontSize: '0.875rem',
+    cursor: 'pointer'
   },
   nav: {
     backgroundColor: 'white',
@@ -179,7 +142,12 @@ const styles = {
     borderRadius: '0.75rem',
     boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
     overflow: 'hidden',
-    transition: 'transform 0.2s, box-shadow 0.2s'
+    transition: 'transform 0.2s, box-shadow 0.2s',
+    cursor: 'pointer'
+  },
+  cardHover: {
+    transform: 'translateY(-4px)',
+    boxShadow: '0 10px 25px rgba(0,0,0,0.15)'
   },
   cardImage: {
     height: '200px',
@@ -311,7 +279,8 @@ const styles = {
     height: '2.5rem',
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'center'
+    justifyContent: 'center',
+    transition: 'background-color 0.2s'
   },
   modalBody: {
     padding: '2rem'
@@ -356,7 +325,8 @@ const styles = {
     border: '1px solid #d1d5db',
     borderRadius: '0.5rem',
     fontSize: '0.875rem',
-    backgroundColor: 'white'
+    backgroundColor: 'white',
+    cursor: 'pointer'
   },
   modalActions: {
     display: 'flex',
@@ -373,7 +343,8 @@ const styles = {
     color: '#374151',
     fontSize: '0.875rem',
     fontWeight: '500',
-    cursor: 'pointer'
+    cursor: 'pointer',
+    transition: 'background-color 0.2s'
   },
   submitButton: {
     padding: '0.75rem 1.5rem',
@@ -383,7 +354,8 @@ const styles = {
     color: 'white',
     fontSize: '0.875rem',
     fontWeight: '500',
-    cursor: 'pointer'
+    cursor: 'pointer',
+    transition: 'background-color 0.2s'
   },
   emptyState: {
     textAlign: 'center',
@@ -442,6 +414,25 @@ const styles = {
     color: '#dc2626',
     fontSize: '0.875rem',
     fontWeight: '500'
+  },
+  tenantInfo: {
+    padding: '0.75rem',
+    backgroundColor: '#eff6ff',
+    borderRadius: '0.5rem',
+    marginBottom: '1rem',
+    fontSize: '0.875rem',
+    color: '#1e40af'
+  },
+  buyerAvatar: {
+    width: '3rem',
+    height: '3rem',
+    borderRadius: '50%',
+    backgroundColor: '#3b82f6',
+    color: 'white',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontWeight: 'bold'
   }
 };
 
@@ -486,7 +477,8 @@ const PropertyModal = ({ show, onClose, onSave, property = null, isEdit = false 
         monthlyRentEur: property.monthlyRentEur || '',
         description: property.description || ''
       });
-    } else {
+    } else if (show) {
+      // Reset form when opening new property modal
       setFormData({
         title: '',
         propertyType: 'sale',
@@ -511,7 +503,8 @@ const PropertyModal = ({ show, onClose, onSave, property = null, isEdit = false 
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    if (!formData.title || !formData.address || !formData.area || !formData.rooms) {
+    // Client-side validation
+    if (!formData.title?.trim() || !formData.address?.trim() || !formData.area || !formData.rooms) {
       alert('Моля попълнете всички задължителни полета!');
       return;
     }
@@ -522,277 +515,288 @@ const PropertyModal = ({ show, onClose, onSave, property = null, isEdit = false 
     }
 
     if ((formData.propertyType === 'rent' || formData.propertyType === 'managed') && !formData.monthlyRentEur) {
-      alert('Моля въведете месечна наема!');
+      alert('Моля въведете месечен наем!');
       return;
     }
 
     try {
       const dataToSend = {
         ...formData,
-        area: parseInt(formData.area),
-        rooms: parseInt(formData.rooms),
+        title: formData.title.trim(),
+        address: formData.address.trim(),
+        area: parseInt(formData.area) || 0,
+        rooms: parseInt(formData.rooms) || 0,
         floor: formData.floor ? parseInt(formData.floor) : null,
         totalFloors: formData.totalFloors ? parseInt(formData.totalFloors) : null,
         yearBuilt: formData.yearBuilt ? parseInt(formData.yearBuilt) : null,
+        priceEur: formData.priceEur ? parseFloat(formData.priceEur) : null,
+        monthlyRentEur: formData.monthlyRentEur ? parseFloat(formData.monthlyRentEur) : null
       };
 
       await onSave(dataToSend);
-      onClose();
     } catch (error) {
-      alert('Грешка при запазване: ' + error.message);
+      alert('Грешка при запазване: ' + (error.message || 'Неочаквана грешка'));
     }
   };
 
   if (!show) return null;
 
   return (
-    <>
-      <style>
-        {`
-          @keyframes spin {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
-          }
-        `}
-      </style>
-      <div style={styles.modal}>
-        <div style={styles.modalContent}>
-          <div style={styles.modalHeader}>
-            <h2 style={styles.modalTitle}>
-              {isEdit ? '✏️ Редактирай имот' : '🏠 Добави нов имот'}
-            </h2>
-            <button onClick={onClose} style={styles.closeButton}>
-              ×
-            </button>
-          </div>
+    <div style={styles.modal}>
+      <div style={styles.modalContent}>
+        <div style={styles.modalHeader}>
+          <h2 style={styles.modalTitle}>
+            {isEdit ? '✏️ Редактирай имот' : '🏠 Добави нов имот'}
+          </h2>
+          <button 
+            onClick={onClose} 
+            style={styles.closeButton}
+            onMouseOver={(e) => e.target.style.backgroundColor = 'rgba(255,255,255,0.2)'}
+            onMouseOut={(e) => e.target.style.backgroundColor = 'transparent'}
+          >
+            ×
+          </button>
+        </div>
 
-          <div style={styles.modalBody}>
-            <form onSubmit={handleSubmit} style={styles.form}>
-              <div style={styles.formGrid}>
-                <div style={{...styles.formGroup, gridColumn: 'span 2'}}>
-                  <label style={styles.label}>Заглавие *</label>
-                  <input
-                    type="text"
-                    value={formData.title}
-                    onChange={(e) => setFormData({...formData, title: e.target.value})}
-                    style={styles.input}
-                    placeholder="напр. Тристаен апартамент в Лозенец"
-                    required
-                  />
-                </div>
-
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Тип имот *</label>
-                  <select
-                    value={formData.propertyType}
-                    onChange={(e) => setFormData({...formData, propertyType: e.target.value})}
-                    style={styles.select}
-                  >
-                    <option value="sale">Продажба</option>
-                    <option value="rent">Наем</option>
-                    <option value="managed">Управляван</option>
-                  </select>
-                </div>
-
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Категория *</label>
-                  <select
-                    value={formData.category}
-                    onChange={(e) => setFormData({...formData, category: e.target.value})}
-                    style={styles.select}
-                  >
-                    <option value="apartment">Апартамент</option>
-                    <option value="house">Къща</option>
-                    <option value="office">Офис</option>
-                    <option value="commercial">Търговски</option>
-                  </select>
-                </div>
-
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Град *</label>
-                  <input
-                    type="text"
-                    value={formData.city}
-                    onChange={(e) => setFormData({...formData, city: e.target.value})}
-                    style={styles.input}
-                    required
-                  />
-                </div>
-
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Район</label>
-                  <input
-                    type="text"
-                    value={formData.district}
-                    onChange={(e) => setFormData({...formData, district: e.target.value})}
-                    style={styles.input}
-                    placeholder="напр. Лозенец, Център"
-                  />
-                </div>
-
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Квадратура (кв.м) *</label>
-                  <input
-                    type="number"
-                    value={formData.area}
-                    onChange={(e) => setFormData({...formData, area: e.target.value})}
-                    style={styles.input}
-                    required
-                    min="1"
-                    placeholder="100"
-                  />
-                </div>
-
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Брой стаи *</label>
-                  <input
-                    type="number"
-                    value={formData.rooms}
-                    onChange={(e) => setFormData({...formData, rooms: e.target.value})}
-                    style={styles.input}
-                    required
-                    min="1"
-                    placeholder="3"
-                  />
-                </div>
-
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Етаж</label>
-                  <input
-                    type="number"
-                    value={formData.floor}
-                    onChange={(e) => setFormData({...formData, floor: e.target.value})}
-                    style={styles.input}
-                    placeholder="4"
-                  />
-                </div>
-
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Общо етажи</label>
-                  <input
-                    type="number"
-                    value={formData.totalFloors}
-                    onChange={(e) => setFormData({...formData, totalFloors: e.target.value})}
-                    style={styles.input}
-                    placeholder="6"
-                  />
-                </div>
-
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Година на строеж</label>
-                  <input
-                    type="number"
-                    value={formData.yearBuilt}
-                    onChange={(e) => setFormData({...formData, yearBuilt: e.target.value})}
-                    style={styles.input}
-                    min="1900"
-                    max={new Date().getFullYear()}
-                    placeholder="2010"
-                  />
-                </div>
-
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Изложение</label>
-                  <select
-                    value={formData.exposure}
-                    onChange={(e) => setFormData({...formData, exposure: e.target.value})}
-                    style={styles.select}
-                  >
-                    <option value="">Изберете</option>
-                    <option value="Север">Север</option>
-                    <option value="Юг">Юг</option>
-                    <option value="Изток">Изток</option>
-                    <option value="Запад">Запад</option>
-                    <option value="Югоизток">Югоизток</option>
-                    <option value="Югозапад">Югозапад</option>
-                    <option value="Североизток">Североизток</option>
-                    <option value="Северозапад">Северозапад</option>
-                  </select>
-                </div>
-
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Отопление</label>
-                  <select
-                    value={formData.heating}
-                    onChange={(e) => setFormData({...formData, heating: e.target.value})}
-                    style={styles.select}
-                  >
-                    <option value="">Изберете</option>
-                    <option value="Централно парно">Централно парно</option>
-                    <option value="Газово">Газово</option>
-                    <option value="Електрическо">Електрическо</option>
-                    <option value="Климатици">Климатици</option>
-                    <option value="Печка">Печка</option>
-                    <option value="Няма">Няма</option>
-                  </select>
-                </div>
-
-                {formData.propertyType === 'sale' && (
-                  <div style={styles.formGroup}>
-                    <label style={styles.label}>Цена (EUR) *</label>
-                    <input
-                      type="number"
-                      value={formData.priceEur}
-                      onChange={(e) => setFormData({...formData, priceEur: e.target.value})}
-                      style={styles.input}
-                      required={formData.propertyType === 'sale'}
-                      min="0"
-                      placeholder="165000"
-                    />
-                  </div>
-                )}
-
-                {(formData.propertyType === 'rent' || formData.propertyType === 'managed') && (
-                  <div style={styles.formGroup}>
-                    <label style={styles.label}>Месечен наем (EUR) *</label>
-                    <input
-                      type="number"
-                      value={formData.monthlyRentEur}
-                      onChange={(e) => setFormData({...formData, monthlyRentEur: e.target.value})}
-                      style={styles.input}
-                      required={formData.propertyType !== 'sale'}
-                      min="0"
-                      placeholder="600"
-                    />
-                  </div>
-                )}
-              </div>
-
-              <div style={styles.formGroup}>
-                <label style={styles.label}>Адрес *</label>
+        <div style={styles.modalBody}>
+          <form onSubmit={handleSubmit} style={styles.form}>
+            <div style={styles.formGrid}>
+              <div style={{...styles.formGroup, gridColumn: 'span 2'}}>
+                <label style={styles.label}>📝 Заглавие *</label>
                 <input
                   type="text"
-                  value={formData.address}
-                  onChange={(e) => setFormData({...formData, address: e.target.value})}
+                  value={formData.title}
+                  onChange={(e) => setFormData({...formData, title: e.target.value})}
                   style={styles.input}
+                  placeholder="напр. Тристаен апартамент в Лозенец"
                   required
-                  placeholder="ул. Фритьоф Нансен 25"
                 />
               </div>
 
               <div style={styles.formGroup}>
-                <label style={styles.label}>Описание</label>
-                <textarea
-                  value={formData.description}
-                  onChange={(e) => setFormData({...formData, description: e.target.value})}
-                  style={styles.textarea}
-                  placeholder="Светъл тристаен апартамент с две тераси и паркомясто..."
+                <label style={styles.label}>🏠 Тип имот *</label>
+                <select
+                  value={formData.propertyType}
+                  onChange={(e) => setFormData({...formData, propertyType: e.target.value})}
+                  style={styles.select}
+                >
+                  <option value="sale">Продажба</option>
+                  <option value="rent">Наем</option>
+                  <option value="managed">Управляван</option>
+                </select>
+              </div>
+
+              <div style={styles.formGroup}>
+                <label style={styles.label}>🏢 Категория *</label>
+                <select
+                  value={formData.category}
+                  onChange={(e) => setFormData({...formData, category: e.target.value})}
+                  style={styles.select}
+                >
+                  <option value="apartment">Апартамент</option>
+                  <option value="house">Къща</option>
+                  <option value="office">Офис</option>
+                  <option value="commercial">Търговски</option>
+                </select>
+              </div>
+
+              <div style={styles.formGroup}>
+                <label style={styles.label}>🌍 Град *</label>
+                <input
+                  type="text"
+                  value={formData.city}
+                  onChange={(e) => setFormData({...formData, city: e.target.value})}
+                  style={styles.input}
+                  required
                 />
               </div>
 
-              <div style={styles.modalActions}>
-                <button type="button" onClick={onClose} style={styles.cancelButton}>
-                  Отказ
-                </button>
-                <button type="submit" style={styles.submitButton}>
-                  {isEdit ? 'Обнови' : 'Създай'}
-                </button>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>📍 Район</label>
+                <input
+                  type="text"
+                  value={formData.district}
+                  onChange={(e) => setFormData({...formData, district: e.target.value})}
+                  style={styles.input}
+                  placeholder="напр. Лозенец, Център"
+                />
               </div>
-            </form>
-          </div>
+
+              <div style={styles.formGroup}>
+                <label style={styles.label}>📐 Квадратура (кв.м) *</label>
+                <input
+                  type="number"
+                  value={formData.area}
+                  onChange={(e) => setFormData({...formData, area: e.target.value})}
+                  style={styles.input}
+                  required
+                  min="1"
+                  placeholder="100"
+                />
+              </div>
+
+              <div style={styles.formGroup}>
+                <label style={styles.label}>🚪 Брой стаи *</label>
+                <input
+                  type="number"
+                  value={formData.rooms}
+                  onChange={(e) => setFormData({...formData, rooms: e.target.value})}
+                  style={styles.input}
+                  required
+                  min="1"
+                  placeholder="3"
+                />
+              </div>
+
+              <div style={styles.formGroup}>
+                <label style={styles.label}>🏗️ Етаж</label>
+                <input
+                  type="number"
+                  value={formData.floor}
+                  onChange={(e) => setFormData({...formData, floor: e.target.value})}
+                  style={styles.input}
+                  placeholder="4"
+                />
+              </div>
+
+              <div style={styles.formGroup}>
+                <label style={styles.label}>🏢 Общо етажи</label>
+                <input
+                  type="number"
+                  value={formData.totalFloors}
+                  onChange={(e) => setFormData({...formData, totalFloors: e.target.value})}
+                  style={styles.input}
+                  placeholder="6"
+                />
+              </div>
+
+              <div style={styles.formGroup}>
+                <label style={styles.label}>📅 Година на строеж</label>
+                <input
+                  type="number"
+                  value={formData.yearBuilt}
+                  onChange={(e) => setFormData({...formData, yearBuilt: e.target.value})}
+                  style={styles.input}
+                  min="1900"
+                  max={new Date().getFullYear()}
+                  placeholder="2010"
+                />
+              </div>
+
+              <div style={styles.formGroup}>
+                <label style={styles.label}>☀️ Изложение</label>
+                <select
+                  value={formData.exposure}
+                  onChange={(e) => setFormData({...formData, exposure: e.target.value})}
+                  style={styles.select}
+                >
+                  <option value="">Изберете</option>
+                  <option value="Север">Север</option>
+                  <option value="Юг">Юг</option>
+                  <option value="Изток">Изток</option>
+                  <option value="Запад">Запад</option>
+                  <option value="Югоизток">Югоизток</option>
+                  <option value="Югозапад">Югозапад</option>
+                  <option value="Североизток">Североизток</option>
+                  <option value="Северозапад">Северозапад</option>
+                </select>
+              </div>
+
+              <div style={styles.formGroup}>
+                <label style={styles.label}>🔥 Отопление</label>
+                <select
+                  value={formData.heating}
+                  onChange={(e) => setFormData({...formData, heating: e.target.value})}
+                  style={styles.select}
+                >
+                  <option value="">Изберете</option>
+                  <option value="Централно парно">Централно парно</option>
+                  <option value="Газово">Газово</option>
+                  <option value="Електрическо">Електрическо</option>
+                  <option value="Климатици">Климатици</option>
+                  <option value="Печка">Печка</option>
+                  <option value="Няма">Няма</option>
+                </select>
+              </div>
+
+              {formData.propertyType === 'sale' && (
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>💰 Цена (EUR) *</label>
+                  <input
+                    type="number"
+                    value={formData.priceEur}
+                    onChange={(e) => setFormData({...formData, priceEur: e.target.value})}
+                    style={styles.input}
+                    required={formData.propertyType === 'sale'}
+                    min="0"
+                    step="0.01"
+                    placeholder="165000"
+                  />
+                </div>
+              )}
+
+              {(formData.propertyType === 'rent' || formData.propertyType === 'managed') && (
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>💵 Месечен наем (EUR) *</label>
+                  <input
+                    type="number"
+                    value={formData.monthlyRentEur}
+                    onChange={(e) => setFormData({...formData, monthlyRentEur: e.target.value})}
+                    style={styles.input}
+                    required={formData.propertyType !== 'sale'}
+                    min="0"
+                    step="0.01"
+                    placeholder="600"
+                  />
+                </div>
+              )}
+            </div>
+
+            <div style={styles.formGroup}>
+              <label style={styles.label}>📍 Адрес *</label>
+              <input
+                type="text"
+                value={formData.address}
+                onChange={(e) => setFormData({...formData, address: e.target.value})}
+                style={styles.input}
+                required
+                placeholder="ул. Фритьоф Нансен 25"
+              />
+            </div>
+
+            <div style={styles.formGroup}>
+              <label style={styles.label}>📝 Описание</label>
+              <textarea
+                value={formData.description}
+                onChange={(e) => setFormData({...formData, description: e.target.value})}
+                style={styles.textarea}
+                placeholder="Светъл тристаен апартамент с две тераси и паркомясто..."
+              />
+            </div>
+
+            <div style={styles.modalActions}>
+              <button 
+                type="button" 
+                onClick={onClose} 
+                style={styles.cancelButton}
+                onMouseOver={(e) => e.target.style.backgroundColor = '#f3f4f6'}
+                onMouseOut={(e) => e.target.style.backgroundColor = 'white'}
+              >
+                Отказ
+              </button>
+              <button 
+                type="submit" 
+                style={styles.submitButton}
+                onMouseOver={(e) => e.target.style.backgroundColor = '#2563eb'}
+                onMouseOut={(e) => e.target.style.backgroundColor = '#3b82f6'}
+              >
+                {isEdit ? 'Обнови' : 'Създай'}
+              </button>
+            </div>
+          </form>
         </div>
       </div>
-    </>
+    </div>
   );
 };
 
@@ -822,12 +826,13 @@ const BuyerModal = ({ show, onClose, onSave, buyer = null, isEdit = false }) => 
         budgetMin: buyer.budgetMin || '',
         budgetMax: buyer.budgetMax || '',
         preferredPropertyType: buyer.preferredPropertyType || 'any',
-        preferredAreas: Array.isArray(buyer.preferredAreas) ? buyer.preferredAreas.join(', ') : '',
+        preferredAreas: Array.isArray(buyer.preferredAreas) ? buyer.preferredAreas.join(', ') : (buyer.preferredAreas || ''),
         preferredRooms: buyer.preferredRooms?.toString() || '',
         notes: buyer.notes || '',
         status: buyer.status || 'potential'
       });
-    } else {
+    } else if (show) {
+      // Reset form when opening new buyer modal
       setFormData({
         firstName: '',
         lastName: '',
@@ -847,22 +852,42 @@ const BuyerModal = ({ show, onClose, onSave, buyer = null, isEdit = false }) => 
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    if (!formData.firstName || !formData.lastName || !formData.phone) {
+    // Client-side validation
+    if (!formData.firstName?.trim() || !formData.lastName?.trim() || !formData.phone?.trim()) {
       alert('Моля попълнете всички задължителни полета!');
+      return;
+    }
+
+    // Email validation
+    if (formData.email && !formData.email.includes('@')) {
+      alert('Моля въведете валиден имейл адрес!');
+      return;
+    }
+
+    // Budget validation
+    if (formData.budgetMin && formData.budgetMax && 
+        parseFloat(formData.budgetMin) > parseFloat(formData.budgetMax)) {
+      alert('Минималният бюджет не може да бъде по-голям от максималния!');
       return;
     }
 
     try {
       const dataToSend = {
         ...formData,
-        preferredAreas: formData.preferredAreas ? formData.preferredAreas.split(',').map(area => area.trim()) : [],
+        firstName: formData.firstName.trim(),
+        lastName: formData.lastName.trim(),
+        phone: formData.phone.trim(),
+        email: formData.email?.trim() || null,
+        preferredAreas: formData.preferredAreas ? 
+          formData.preferredAreas.split(',').map(area => area.trim()).filter(area => area) : [],
         preferredRooms: formData.preferredRooms ? parseInt(formData.preferredRooms) : null,
+        budgetMin: formData.budgetMin ? parseFloat(formData.budgetMin) : null,
+        budgetMax: formData.budgetMax ? parseFloat(formData.budgetMax) : null
       };
 
       await onSave(dataToSend);
-      onClose();
     } catch (error) {
-      alert('Грешка при запазване: ' + error.message);
+      alert('Грешка при запазване: ' + (error.message || 'Неочаквана грешка'));
     }
   };
 
@@ -875,7 +900,12 @@ const BuyerModal = ({ show, onClose, onSave, buyer = null, isEdit = false }) => 
           <h2 style={styles.modalTitle}>
             {isEdit ? '✏️ Редактирай купувач' : '👤 Добави нов купувач'}
           </h2>
-          <button onClick={onClose} style={styles.closeButton}>
+          <button 
+            onClick={onClose} 
+            style={styles.closeButton}
+            onMouseOver={(e) => e.target.style.backgroundColor = 'rgba(255,255,255,0.2)'}
+            onMouseOut={(e) => e.target.style.backgroundColor = 'transparent'}
+          >
             ×
           </button>
         </div>
@@ -884,7 +914,7 @@ const BuyerModal = ({ show, onClose, onSave, buyer = null, isEdit = false }) => 
           <form onSubmit={handleSubmit} style={styles.form}>
             <div style={styles.formGrid}>
               <div style={styles.formGroup}>
-                <label style={styles.label}>Име *</label>
+                <label style={styles.label}>👤 Име *</label>
                 <input
                   type="text"
                   value={formData.firstName}
@@ -896,7 +926,7 @@ const BuyerModal = ({ show, onClose, onSave, buyer = null, isEdit = false }) => 
               </div>
 
               <div style={styles.formGroup}>
-                <label style={styles.label}>Фамилия *</label>
+                <label style={styles.label}>👤 Фамилия *</label>
                 <input
                   type="text"
                   value={formData.lastName}
@@ -908,7 +938,7 @@ const BuyerModal = ({ show, onClose, onSave, buyer = null, isEdit = false }) => 
               </div>
 
               <div style={styles.formGroup}>
-                <label style={styles.label}>Телефон *</label>
+                <label style={styles.label}>📞 Телефон *</label>
                 <input
                   type="tel"
                   value={formData.phone}
@@ -920,7 +950,7 @@ const BuyerModal = ({ show, onClose, onSave, buyer = null, isEdit = false }) => 
               </div>
 
               <div style={styles.formGroup}>
-                <label style={styles.label}>Email</label>
+                <label style={styles.label}>✉️ Email</label>
                 <input
                   type="email"
                   value={formData.email}
@@ -931,31 +961,33 @@ const BuyerModal = ({ show, onClose, onSave, buyer = null, isEdit = false }) => 
               </div>
 
               <div style={styles.formGroup}>
-                <label style={styles.label}>Минимален бюджет (EUR)</label>
+                <label style={styles.label}>💰 Минимален бюджет (EUR)</label>
                 <input
                   type="number"
                   value={formData.budgetMin}
                   onChange={(e) => setFormData({...formData, budgetMin: e.target.value})}
                   style={styles.input}
                   min="0"
+                  step="0.01"
                   placeholder="100000"
                 />
               </div>
 
               <div style={styles.formGroup}>
-                <label style={styles.label}>Максимален бюджет (EUR)</label>
+                <label style={styles.label}>💰 Максимален бюджет (EUR)</label>
                 <input
                   type="number"
                   value={formData.budgetMax}
                   onChange={(e) => setFormData({...formData, budgetMax: e.target.value})}
                   style={styles.input}
                   min="0"
+                  step="0.01"
                   placeholder="200000"
                 />
               </div>
 
               <div style={styles.formGroup}>
-                <label style={styles.label}>Предпочитан тип имот</label>
+                <label style={styles.label}>🏠 Предпочитан тип имот</label>
                 <select
                   value={formData.preferredPropertyType}
                   onChange={(e) => setFormData({...formData, preferredPropertyType: e.target.value})}
@@ -968,7 +1000,7 @@ const BuyerModal = ({ show, onClose, onSave, buyer = null, isEdit = false }) => 
               </div>
 
               <div style={styles.formGroup}>
-                <label style={styles.label}>Предпочитан брой стаи</label>
+                <label style={styles.label}>🚪 Предпочитан брой стаи</label>
                 <input
                   type="number"
                   value={formData.preferredRooms}
@@ -980,7 +1012,7 @@ const BuyerModal = ({ show, onClose, onSave, buyer = null, isEdit = false }) => 
               </div>
 
               <div style={styles.formGroup}>
-                <label style={styles.label}>Статус</label>
+                <label style={styles.label}>📊 Статус</label>
                 <select
                   value={formData.status}
                   onChange={(e) => setFormData({...formData, status: e.target.value})}
@@ -994,7 +1026,7 @@ const BuyerModal = ({ show, onClose, onSave, buyer = null, isEdit = false }) => 
               </div>
 
               <div style={{...styles.formGroup, gridColumn: 'span 2'}}>
-                <label style={styles.label}>Предпочитани райони (разделени със запетая)</label>
+                <label style={styles.label}>📍 Предпочитани райони (разделени със запетая)</label>
                 <input
                   type="text"
                   value={formData.preferredAreas}
@@ -1005,7 +1037,7 @@ const BuyerModal = ({ show, onClose, onSave, buyer = null, isEdit = false }) => 
               </div>
 
               <div style={{...styles.formGroup, gridColumn: 'span 2'}}>
-                <label style={styles.label}>Бележки</label>
+                <label style={styles.label}>📝 Бележки</label>
                 <textarea
                   value={formData.notes}
                   onChange={(e) => setFormData({...formData, notes: e.target.value})}
@@ -1016,10 +1048,21 @@ const BuyerModal = ({ show, onClose, onSave, buyer = null, isEdit = false }) => 
             </div>
 
             <div style={styles.modalActions}>
-              <button type="button" onClick={onClose} style={styles.cancelButton}>
+              <button 
+                type="button" 
+                onClick={onClose} 
+                style={styles.cancelButton}
+                onMouseOver={(e) => e.target.style.backgroundColor = '#f3f4f6'}
+                onMouseOut={(e) => e.target.style.backgroundColor = 'white'}
+              >
                 Отказ
               </button>
-              <button type="submit" style={styles.submitButton}>
+              <button 
+                type="submit" 
+                style={styles.submitButton}
+                onMouseOver={(e) => e.target.style.backgroundColor = '#059669'}
+                onMouseOut={(e) => e.target.style.backgroundColor = '#10b981'}
+              >
                 {isEdit ? 'Обнови' : 'Създай'}
               </button>
             </div>
@@ -1032,6 +1075,7 @@ const BuyerModal = ({ show, onClose, onSave, buyer = null, isEdit = false }) => 
 
 // Main App Component
 const App = () => {
+  // Page and UI state
   const [currentPage, setCurrentPage] = useState('properties');
   const [currency, setCurrency] = useState('EUR');
   const [loading, setLoading] = useState(false);
@@ -1050,29 +1094,38 @@ const App = () => {
 
   // Load data on mount
   useEffect(() => {
-    loadProperties();
-    loadBuyers();
+    loadInitialData();
   }, []);
 
-  const loadProperties = async () => {
+  const loadInitialData = async () => {
     setLoading(true);
     try {
-      const response = await propertiesAPI.getAll();
-      setProperties(response.properties || response);
+      await Promise.all([loadProperties(), loadBuyers()]);
     } catch (error) {
-      setError('Failed to load properties');
-      console.error('Error loading properties:', error);
+      setError('Грешка при зареждане на данните');
+      console.error('Error loading initial data:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadProperties = async () => {
+    try {
+      const response = await propertiesAPI.getAll();
+      setProperties(Array.isArray(response) ? response : (response.properties || []));
+    } catch (error) {
+      console.error('Error loading properties:', error);
+      throw error;
     }
   };
 
   const loadBuyers = async () => {
     try {
       const response = await buyersAPI.getAll();
-      setBuyers(response.buyers || response);
+      setBuyers(Array.isArray(response) ? response : (response.buyers || []));
     } catch (error) {
       console.error('Error loading buyers:', error);
+      throw error;
     }
   };
 
@@ -1084,8 +1137,9 @@ const App = () => {
       setProperties(prev => [...prev, newProperty]);
       setShowPropertyModal(false);
       setEditingProperty(null);
+      setError(null);
     } catch (error) {
-      setError('Failed to add property');
+      setError('Неуспешно добавяне на имот: ' + (error.message || 'Неочаквана грешка'));
       console.error('Error adding property:', error);
       throw error;
     } finally {
@@ -1094,14 +1148,19 @@ const App = () => {
   };
 
   const handleEditProperty = async (propertyData) => {
+    if (!editingProperty?.id) {
+      throw new Error('Невалиден имот за редактиране');
+    }
+
     try {
       setLoading(true);
       const updatedProperty = await propertiesAPI.update(editingProperty.id, propertyData);
       setProperties(prev => prev.map(p => p.id === editingProperty.id ? updatedProperty : p));
       setShowPropertyModal(false);
       setEditingProperty(null);
+      setError(null);
     } catch (error) {
-      setError('Failed to update property');
+      setError('Неуспешно обновяване на имот: ' + (error.message || 'Неочаквана грешка'));
       console.error('Error updating property:', error);
       throw error;
     } finally {
@@ -1110,17 +1169,20 @@ const App = () => {
   };
 
   const handleDeleteProperty = async (id) => {
-    if (window.confirm('Сигурни ли сте, че искате да изтриете този имот?')) {
-      try {
-        setLoading(true);
-        await propertiesAPI.delete(id);
-        setProperties(prev => prev.filter(p => p.id !== id));
-      } catch (error) {
-        setError('Failed to delete property');
-        console.error('Error deleting property:', error);
-      } finally {
-        setLoading(false);
-      }
+    if (!window.confirm('Сигурни ли сте, че искате да изтриете този имот?')) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      await propertiesAPI.delete(id);
+      setProperties(prev => prev.filter(p => p.id !== id));
+      setError(null);
+    } catch (error) {
+      setError('Неуспешно изтриване на имот: ' + (error.message || 'Неочаквана грешка'));
+      console.error('Error deleting property:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -1132,8 +1194,9 @@ const App = () => {
       setBuyers(prev => [...prev, newBuyer]);
       setShowBuyerModal(false);
       setEditingBuyer(null);
+      setError(null);
     } catch (error) {
-      setError('Failed to add buyer');
+      setError('Неуспешно добавяне на купувач: ' + (error.message || 'Неочаквана грешка'));
       console.error('Error adding buyer:', error);
       throw error;
     } finally {
@@ -1142,14 +1205,19 @@ const App = () => {
   };
 
   const handleEditBuyer = async (buyerData) => {
+    if (!editingBuyer?.id) {
+      throw new Error('Невалиден купувач за редактиране');
+    }
+
     try {
       setLoading(true);
       const updatedBuyer = await buyersAPI.update(editingBuyer.id, buyerData);
       setBuyers(prev => prev.map(b => b.id === editingBuyer.id ? updatedBuyer : b));
       setShowBuyerModal(false);
       setEditingBuyer(null);
+      setError(null);
     } catch (error) {
-      setError('Failed to update buyer');
+      setError('Неуспешно обновяване на купувач: ' + (error.message || 'Неочаквана грешка'));
       console.error('Error updating buyer:', error);
       throw error;
     } finally {
@@ -1158,29 +1226,32 @@ const App = () => {
   };
 
   const handleDeleteBuyer = async (id) => {
-    if (window.confirm('Сигурни ли сте, че искате да изтриете този купувач?')) {
-      try {
-        setLoading(true);
-        await buyersAPI.delete(id);
-        setBuyers(prev => prev.filter(b => b.id !== id));
-      } catch (error) {
-        setError('Failed to delete buyer');
-        console.error('Error deleting buyer:', error);
-      } finally {
-        setLoading(false);
-      }
+    if (!window.confirm('Сигурни ли сте, че искате да изтриете този купувач?')) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      await buyersAPI.delete(id);
+      setBuyers(prev => prev.filter(b => b.id !== id));
+      setError(null);
+    } catch (error) {
+      setError('Неуспешно изтриване на купувач: ' + (error.message || 'Неочаквана грешка'));
+      console.error('Error deleting buyer:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
   // Utility functions
   const formatPrice = (priceEur) => {
-    if (!priceEur) return 'N/A';
+    if (!priceEur || isNaN(parseFloat(priceEur))) return 'N/A';
     const price = parseFloat(priceEur);
     if (currency === 'EUR') {
-      return `${price.toLocaleString()} EUR`;
+      return `${price.toLocaleString('bg-BG')} EUR`;
     } else {
       const priceBgn = Math.round(price * EUR_TO_BGN_RATE);
-      return `${priceBgn.toLocaleString()} лв.`;
+      return `${priceBgn.toLocaleString('bg-BG')} лв.`;
     }
   };
 
@@ -1191,35 +1262,32 @@ const App = () => {
 
   const getStatusBadgeStyle = (status) => {
     const baseStyle = {...styles.statusBadge};
-    switch(status) {
+    switch(status?.toLowerCase()) {
       case 'available':
         return {...baseStyle, backgroundColor: '#10b981'};
       case 'rented':
         return {...baseStyle, backgroundColor: '#f59e0b'};
       case 'managed':
         return {...baseStyle, backgroundColor: '#3b82f6'};
+      case 'sold':
+        return {...baseStyle, backgroundColor: '#6b7280'};
       default:
         return {...baseStyle, backgroundColor: '#6b7280'};
     }
   };
 
   const getBuyerStatusBadge = (status) => {
-    const colors = {
-      active: '#10b981',
-      potential: '#f59e0b',
-      converted: '#3b82f6',
-      inactive: '#6b7280'
-    };
-    
-    const labels = {
-      active: 'Активен',
-      potential: 'Потенциален', 
-      converted: 'Клиент',
-      inactive: 'Неактивен'
+    const statusConfig = {
+      active: { color: '#10b981', label: 'Активен' },
+      potential: { color: '#f59e0b', label: 'Потенциален' },
+      converted: { color: '#3b82f6', label: 'Клиент' },
+      inactive: { color: '#6b7280', label: 'Неактивен' }
     };
 
+    const config = statusConfig[status] || statusConfig.inactive;
+    
     return {
-      backgroundColor: colors[status] || colors.inactive,
+      backgroundColor: config.color,
       color: 'white',
       padding: '0.25rem 0.75rem',
       borderRadius: '9999px',
@@ -1239,8 +1307,21 @@ const App = () => {
     setShowBuyerModal(true);
   };
 
+  const closePropertyModal = () => {
+    setShowPropertyModal(false);
+    setEditingProperty(null);
+  };
+
+  const closeBuyerModal = () => {
+    setShowBuyerModal(false);
+    setEditingBuyer(null);
+  };
+
   return (
     <div style={styles.pageContainer}>
+      {/* Global Styles */}
+      <style>{globalStyles}</style>
+
       {/* Header */}
       <header style={styles.header}>
         <div style={styles.headerContent}>
@@ -1255,12 +1336,12 @@ const App = () => {
               onChange={(e) => setCurrency(e.target.value)}
               style={styles.currencySelect}
             >
-              <option value="EUR">EUR (1.00)</option>
-              <option value="BGN">BGN ({EUR_TO_BGN_RATE})</option>
+              <option value="EUR">💶 EUR (1.00)</option>
+              <option value="BGN">💴 BGN ({EUR_TO_BGN_RATE})</option>
             </select>
 
             <div style={{fontSize: '0.875rem', color: '#374151'}}>
-              <div style={{fontWeight: '600'}}>Мария Иванова</div>
+              <div style={{fontWeight: '600'}}>👤 Мария Иванова</div>
               <div style={{color: '#6b7280'}}>Агент</div>
             </div>
           </div>
@@ -1297,7 +1378,13 @@ const App = () => {
             <div style={styles.errorText}>{error}</div>
             <button 
               onClick={() => setError(null)}
-              style={{background: 'none', border: 'none', fontSize: '1.25rem', cursor: 'pointer'}}
+              style={{
+                background: 'none', 
+                border: 'none', 
+                fontSize: '1.25rem', 
+                cursor: 'pointer',
+                color: '#dc2626'
+              }}
             >
               ×
             </button>
@@ -1327,10 +1414,9 @@ const App = () => {
                   setEditingProperty(null);
                   setShowPropertyModal(true);
                 }}
-                style={{
-                  ...styles.addButton,
-                  ':hover': {backgroundColor: '#2563eb'}
-                }}
+                style={styles.addButton}
+                onMouseOver={(e) => e.target.style.backgroundColor = '#2563eb'}
+                onMouseOut={(e) => e.target.style.backgroundColor = '#3b82f6'}
               >
                 + Добави имот
               </button>
@@ -1362,20 +1448,24 @@ const App = () => {
               {getFilteredProperties().map((property) => (
                 <div 
                   key={property.id} 
-                  style={{
-                    ...styles.card,
-                    ':hover': {
-                      transform: 'translateY(-4px)',
-                      boxShadow: '0 10px 25px rgba(0,0,0,0.15)'
-                    }
+                  style={styles.card}
+                  onMouseOver={(e) => {
+                    e.currentTarget.style.transform = 'translateY(-4px)';
+                    e.currentTarget.style.boxShadow = '0 10px 25px rgba(0,0,0,0.15)';
+                  }}
+                  onMouseOut={(e) => {
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.1)';
                   }}
                 >
                   <div style={styles.cardImage}>
                     <div style={styles.cardImageIcon}>🏠</div>
                     <div style={getStatusBadgeStyle(property.status)}>
-                      {property.status === 'available' ? 'Свободен' :
-                       property.status === 'rented' ? 'Отдаден' :
-                       'Управляван'}
+                      {property.status === 'available' ? '✅ Свободен' :
+                       property.status === 'rented' ? '🔶 Отдаден' :
+                       property.status === 'managed' ? '🔷 Управляван' :
+                       property.status === 'sold' ? '✅ Продаден' :
+                       '❓ Неопределен'}
                     </div>
                   </div>
 
@@ -1393,25 +1483,19 @@ const App = () => {
                         </div>
                         {property.propertyType === 'sale' && currency === 'EUR' && property.priceEur && (
                           <div style={styles.priceSecondary}>
-                            ≈ {Math.round(parseFloat(property.priceEur) * EUR_TO_BGN_RATE).toLocaleString()} лв.
+                            ≈ {Math.round(parseFloat(property.priceEur) * EUR_TO_BGN_RATE).toLocaleString('bg-BG')} лв.
                           </div>
                         )}
                       </div>
                       <div style={styles.details}>
                         <div>📐 {property.area} кв.м</div>
                         <div>🚪 {property.rooms} стаи</div>
+                        {property.floor && <div>🏗️ {property.floor} етаж</div>}
                       </div>
                     </div>
 
                     {property.tenants && property.tenants.length > 0 && (
-                      <div style={{
-                        padding: '0.75rem',
-                        backgroundColor: '#eff6ff',
-                        borderRadius: '0.5rem',
-                        marginBottom: '1rem',
-                        fontSize: '0.875rem',
-                        color: '#1e40af'
-                      }}>
+                      <div style={styles.tenantInfo}>
                         👤 Наемател: {property.tenants[0].firstName} {property.tenants[0].lastName}
                       </div>
                     )}
@@ -1424,12 +1508,16 @@ const App = () => {
                         <button
                           onClick={() => openEditPropertyModal(property)}
                           style={{...styles.actionButton, ...styles.editButton}}
+                          onMouseOver={(e) => e.target.style.backgroundColor = '#2563eb'}
+                          onMouseOut={(e) => e.target.style.backgroundColor = '#3b82f6'}
                         >
                           ✏️ Редактирай
                         </button>
                         <button
                           onClick={() => handleDeleteProperty(property.id)}
                           style={{...styles.actionButton, ...styles.deleteButton}}
+                          onMouseOver={(e) => e.target.style.backgroundColor = '#dc2626'}
+                          onMouseOut={(e) => e.target.style.backgroundColor = '#ef4444'}
                         >
                           🗑️ Изтрий
                         </button>
@@ -1461,6 +1549,8 @@ const App = () => {
                   setShowBuyerModal(true);
                 }}
                 style={{...styles.addButton, backgroundColor: '#10b981'}}
+                onMouseOver={(e) => e.target.style.backgroundColor = '#059669'}
+                onMouseOut={(e) => e.target.style.backgroundColor = '#10b981'}
               >
                 + Добави купувач
               </button>
@@ -1471,18 +1561,8 @@ const App = () => {
                 <div key={buyer.id} style={styles.card}>
                   <div style={styles.cardContent}>
                     <div style={{display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem'}}>
-                      <div style={{
-                        width: '3rem',
-                        height: '3rem',
-                        borderRadius: '50%',
-                        backgroundColor: '#3b82f6',
-                        color: 'white',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontWeight: 'bold'
-                      }}>
-                        {buyer.firstName[0]}{buyer.lastName[0]}
+                      <div style={styles.buyerAvatar}>
+                        {buyer.firstName?.[0]?.toUpperCase() || '?'}{buyer.lastName?.[0]?.toUpperCase() || '?'}
                       </div>
                       <div>
                         <h3 style={styles.cardTitle}>{buyer.firstName} {buyer.lastName}</h3>
@@ -1501,22 +1581,29 @@ const App = () => {
                       {(buyer.budgetMin || buyer.budgetMax) && (
                         <div>💰 Бюджет: {buyer.budgetMin ? formatPrice(buyer.budgetMin) : '0'} - {buyer.budgetMax ? formatPrice(buyer.budgetMax) : '∞'}</div>
                       )}
+                      {buyer.preferredAreas && buyer.preferredAreas.length > 0 && (
+                        <div style={{marginTop: '0.5rem'}}>📍 Райони: {Array.isArray(buyer.preferredAreas) ? buyer.preferredAreas.join(', ') : buyer.preferredAreas}</div>
+                      )}
                     </div>
                     
                     <div style={styles.cardActions}>
                       <div style={{fontSize: '0.875rem', color: '#6b7280'}}>
-                        Контакт: {buyer.lastContact ? new Date(buyer.lastContact).toLocaleDateString('bg-BG') : 'Няма'}
+                        📅 Контакт: {buyer.lastContact ? new Date(buyer.lastContact).toLocaleDateString('bg-BG') : 'Няма'}
                       </div>
                       <div style={{display: 'flex', gap: '0.5rem'}}>
                         <button
                           onClick={() => openEditBuyerModal(buyer)}
                           style={{...styles.actionButton, backgroundColor: '#10b981', color: 'white'}}
+                          onMouseOver={(e) => e.target.style.backgroundColor = '#059669'}
+                          onMouseOut={(e) => e.target.style.backgroundColor = '#10b981'}
                         >
                           ✏️
                         </button>
                         <button
                           onClick={() => handleDeleteBuyer(buyer.id)}
                           style={{...styles.actionButton, ...styles.deleteButton}}
+                          onMouseOver={(e) => e.target.style.backgroundColor = '#dc2626'}
+                          onMouseOut={(e) => e.target.style.backgroundColor = '#ef4444'}
                         >
                           🗑️
                         </button>
@@ -1558,10 +1645,7 @@ const App = () => {
       {/* Modals */}
       <PropertyModal
         show={showPropertyModal}
-        onClose={() => {
-          setShowPropertyModal(false);
-          setEditingProperty(null);
-        }}
+        onClose={closePropertyModal}
         onSave={editingProperty ? handleEditProperty : handleAddProperty}
         property={editingProperty}
         isEdit={!!editingProperty}
@@ -1569,10 +1653,7 @@ const App = () => {
 
       <BuyerModal
         show={showBuyerModal}
-        onClose={() => {
-          setShowBuyerModal(false);
-          setEditingBuyer(null);
-        }}
+        onClose={closeBuyerModal}
         onSave={editingBuyer ? handleEditBuyer : handleAddBuyer}
         buyer={editingBuyer}
         isEdit={!!editingBuyer}
