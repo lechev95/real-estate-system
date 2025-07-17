@@ -1,468 +1,342 @@
-// frontend/src/services/api.js - CLEAN VERSION WITHOUT DUPLICATIONS
+// frontend/src/services/api.js
 const API_BASE_URL = 'https://real-estate-crm-api-cwlr.onrender.com/api';
 
-// Helper function to clean data before sending
-const cleanData = (data) => {
-  const cleaned = {};
-  for (const [key, value] of Object.entries(data)) {
-    if (value !== null && value !== undefined && value !== '') {
-      if (typeof value === 'string') {
-        cleaned[key] = value.trim();
-      } else {
-        cleaned[key] = value;
-      }
-    }
+// Enhanced API client with retry logic and better error handling
+class APIClient {
+  constructor(baseURL) {
+    this.baseURL = baseURL;
+    this.retryAttempts = 3;
+    this.retryDelay = 1000; // 1 second
   }
-  return cleaned;
-};
 
-// Helper function to convert types
-const convertTypes = (data) => {
-  const converted = { ...data };
-  
-  // Convert numeric fields
-  const numericFields = ['area', 'rooms', 'priceEur', 'monthlyRentEur', 'managementFeePercent', 'budgetMin', 'budgetMax'];
-  numericFields.forEach(field => {
-    if (converted[field] && typeof converted[field] === 'string') {
-      const num = parseFloat(converted[field]);
-      if (!isNaN(num)) {
-        converted[field] = num;
-      }
-    }
-  });
-  
-  return converted;
-};
+  async request(endpoint, options = {}) {
+    const url = `${this.baseURL}${endpoint}`;
+    const config = {
+      headers: {
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+      ...options,
+    };
 
-// Helper function for API calls with retry logic
-const apiCall = async (url, options = {}, retries = 3) => {
-  const fullUrl = url.startsWith('http') ? url : `${API_BASE_URL}${url}`;
-  
-  const defaultOptions = {
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    ...options
-  };
+    console.log(`API Call: ${config.method || 'GET'} ${url}`);
 
-  for (let i = 0; i < retries; i++) {
-    try {
-      console.log(`API Call: ${options.method || 'GET'} ${fullUrl}`, options.body ? JSON.parse(options.body) : '');
-      
-      const response = await fetch(fullUrl, defaultOptions);
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        let errorMessage;
-        try {
-          const errorJson = JSON.parse(errorText);
-          errorMessage = errorJson.error || errorJson.message || `HTTP ${response.status}`;
-        } catch {
-          errorMessage = errorText || `HTTP ${response.status} - ${response.statusText}`;
+    for (let attempt = 1; attempt <= this.retryAttempts; attempt++) {
+      try {
+        const response = await fetch(url, config);
+        
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          const error = new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+          error.status = response.status;
+          error.details = errorData.details;
+          throw error;
         }
-        throw new Error(errorMessage);
+
+        const data = await response.json();
+        console.log(`API Success: ${config.method || 'GET'} ${url}`, data);
+        return data;
+      } catch (error) {
+        console.log(`API Error (attempt ${attempt}): ${error.message}`);
+        
+        if (attempt === this.retryAttempts) {
+          console.error(`Final API Error: ${error.message}`);
+          throw new Error(error.message || `Failed to ${config.method || 'GET'} ${endpoint.split('/')[1] || 'resource'}`);
+        }
+        
+        // Wait before retrying
+        await new Promise(resolve => setTimeout(resolve, this.retryDelay * attempt));
       }
-      
-      const result = await response.json();
-      console.log(`API Success: ${options.method || 'GET'} ${fullUrl}`, result);
-      return result;
-      
-    } catch (error) {
-      console.error(`API Error (attempt ${i + 1}):`, error.message);
-      
-      if (i === retries - 1) {
-        throw error;
-      }
-      
-      // Wait before retry (exponential backoff)
-      await new Promise(resolve => setTimeout(resolve, Math.pow(2, i) * 1000));
     }
   }
-};
 
-// Properties API - COMPLETE WITH ALL FUNCTIONS
+  // GET request
+  async get(endpoint) {
+    return this.request(endpoint, { method: 'GET' });
+  }
+
+  // POST request
+  async post(endpoint, data) {
+    return this.request(endpoint, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  // PUT request
+  async put(endpoint, data) {
+    return this.request(endpoint, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  // DELETE request
+  async delete(endpoint) {
+    return this.request(endpoint, { method: 'DELETE' });
+  }
+}
+
+// Initialize API client
+const apiClient = new APIClient(API_BASE_URL);
+
+// Properties API
 export const propertiesAPI = {
   // Get all properties
-  getAll: async (filters = {}) => {
-    const queryParams = new URLSearchParams(cleanData(filters)).toString();
-    const url = `/properties${queryParams ? `?${queryParams}` : ''}`;
-    return apiCall(url);
+  getAll: (filters = {}) => {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') {
+        params.append(key, value);
+      }
+    });
+    const queryString = params.toString();
+    return apiClient.get(`/properties${queryString ? `?${queryString}` : ''}`);
   },
 
-  // Get property by ID
-  getById: async (id) => {
-    return apiCall(`/properties/${id}`);
-  },
+  // Get single property
+  getById: (id) => apiClient.get(`/properties/${id}`),
 
   // Create new property
-  create: async (propertyData) => {
-    const cleanedData = cleanData(propertyData);
-    const convertedData = convertTypes(cleanedData);
-    
-    // Client-side validation
-    if (!convertedData.title || !convertedData.propertyType) {
-      throw new Error('Заглавие и тип имот са задължителни полета');
-    }
-    
-    if (convertedData.propertyType === 'sale' && !convertedData.priceEur) {
-      throw new Error('Цената е задължителна за имоти за продажба');
-    }
-    
-    if ((convertedData.propertyType === 'rent' || convertedData.propertyType === 'managed') && !convertedData.monthlyRentEur) {
-      throw new Error('Месечният наем е задължителен за имоти под наем');
-    }
-
-    return apiCall('/properties', {
-      method: 'POST',
-      body: JSON.stringify(convertedData)
-    });
-  },
+  create: (propertyData) => apiClient.post('/properties', propertyData),
 
   // Update property
-  update: async (id, propertyData) => {
-    const cleanedData = cleanData(propertyData);
-    const convertedData = convertTypes(cleanedData);
-    
-    // Client-side validation
-    if (convertedData.title && convertedData.title.length < 2) {
-      throw new Error('Заглавието трябва да бъде поне 2 символа');
-    }
-
-    return apiCall(`/properties/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(convertedData)
-    });
-  },
+  update: (id, propertyData) => apiClient.put(`/properties/${id}`, propertyData),
 
   // Delete property
-  delete: async (id) => {
-    return apiCall(`/properties/${id}`, {
-      method: 'DELETE'
-    });
-  },
+  delete: (id) => apiClient.delete(`/properties/${id}`),
 
-  // Archive property
-  archive: async (id) => {
-    return apiCall(`/properties/${id}/archive`, { method: 'PUT' });
-  },
-
-  // Unarchive property
-  unarchive: async (id) => {
-    return apiCall(`/properties/${id}/unarchive`, { method: 'PUT' });
-  },
+  // Archive/Unarchive property
+  archive: (id, archive = true) => apiClient.post(`/properties/${id}/archive`, { archive }),
 
   // Assign seller to property
-  assignSeller: async (id, sellerId) => {
-    return apiCall(`/properties/${id}/assign-seller`, {
-      method: 'PUT',
-      body: JSON.stringify({ sellerId })
-    });
-  },
+  assignSeller: (propertyId, sellerId) => 
+    apiClient.post(`/properties/${propertyId}/assign-seller`, { sellerId }),
 
-  // Assign buyer to property
-  assignBuyer: async (id, buyerId, type = 'buyer') => {
-    return apiCall(`/properties/${id}/assign-buyer`, {
-      method: 'PUT',
-      body: JSON.stringify({ buyerId, type })
-    });
-  },
+  // Assign buyer/tenant to property
+  assignBuyer: (propertyId, buyerId, isTenant = false) => 
+    apiClient.post(`/properties/${propertyId}/assign-buyer`, { 
+      [isTenant ? 'tenantId' : 'buyerId']: buyerId, 
+      isTenant 
+    }),
 
-  // Increment property viewings
-  incrementViewings: async (id) => {
-    return apiCall(`/properties/${id}/viewings`, { method: 'PUT' });
-  },
+  // Increment viewing count
+  incrementViewing: (id) => apiClient.post(`/properties/${id}/increment-viewing`),
 
-  // Search properties
-  search: async (query, filters = {}) => {
-    const searchParams = { 
-      q: query,
-      ...cleanData(filters)
-    };
-    const queryParams = new URLSearchParams(searchParams).toString();
-    return apiCall(`/search/properties?${queryParams}`);
-  }
+  // Get property statistics
+  getStats: () => apiClient.get('/properties/stats')
 };
 
-// Buyers API - COMPLETE
+// Buyers API
 export const buyersAPI = {
   // Get all buyers
-  getAll: async (filters = {}) => {
-    const queryParams = new URLSearchParams(cleanData(filters)).toString();
-    const url = `/buyers${queryParams ? `?${queryParams}` : ''}`;
-    return apiCall(url);
+  getAll: (filters = {}) => {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') {
+        params.append(key, value);
+      }
+    });
+    const queryString = params.toString();
+    return apiClient.get(`/buyers${queryString ? `?${queryString}` : ''}`);
   },
 
-  // Get buyer by ID
-  getById: async (id) => {
-    return apiCall(`/buyers/${id}`);
-  },
+  // Get single buyer
+  getById: (id) => apiClient.get(`/buyers/${id}`),
 
   // Create new buyer
-  create: async (buyerData) => {
-    const cleanedData = cleanData(buyerData);
-    const convertedData = convertTypes(cleanedData);
-    
-    // Client-side validation
-    if (!convertedData.firstName || !convertedData.lastName) {
-      throw new Error('Име и фамилия са задължителни полета');
-    }
-    
-    if (!convertedData.phone) {
-      throw new Error('Телефонният номер е задължителен');
-    }
-    
-    if (convertedData.email && !convertedData.email.includes('@')) {
-      throw new Error('Невалиден имейл адрес');
-    }
-    
-    if (convertedData.budgetMin && convertedData.budgetMax && 
-        parseFloat(convertedData.budgetMin) > parseFloat(convertedData.budgetMax)) {
-      throw new Error('Минималният бюджет не може да бъде по-голям от максималния');
-    }
-
-    return apiCall('/buyers', {
-      method: 'POST',
-      body: JSON.stringify(convertedData)
-    });
-  },
+  create: (buyerData) => apiClient.post('/buyers', buyerData),
 
   // Update buyer
-  update: async (id, buyerData) => {
-    const cleanedData = cleanData(buyerData);
-    const convertedData = convertTypes(cleanedData);
-    
-    // Client-side validation
-    if (convertedData.email && !convertedData.email.includes('@')) {
-      throw new Error('Невалиден имейл адрес');
-    }
-    
-    if (convertedData.budgetMin && convertedData.budgetMax && 
-        parseFloat(convertedData.budgetMin) > parseFloat(convertedData.budgetMax)) {
-      throw new Error('Минималният бюджет не може да бъде по-голям от максималния');
-    }
-
-    return apiCall(`/buyers/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(convertedData)
-    });
-  },
+  update: (id, buyerData) => apiClient.put(`/buyers/${id}`, buyerData),
 
   // Delete buyer
-  delete: async (id) => {
-    return apiCall(`/buyers/${id}`, {
-      method: 'DELETE'
-    });
-  },
+  delete: (id) => apiClient.delete(`/buyers/${id}`),
+
+  // Archive/Unarchive buyer
+  archive: (id, archive = true) => apiClient.post(`/buyers/${id}/archive`, { archive }),
+
+  // Update buyer status
+  updateStatus: (id, status) => apiClient.put(`/buyers/${id}/status`, { status }),
+
+  // Update last contact date
+  updateContact: (id) => apiClient.post(`/buyers/${id}/contact`),
 
   // Search buyers
-  search: async (query, filters = {}) => {
-    const searchParams = { 
-      q: query,
-      ...cleanData(filters)
-    };
-    const queryParams = new URLSearchParams(searchParams).toString();
-    return apiCall(`/search/buyers?${queryParams}`);
-  }
+  search: (query) => apiClient.get(`/buyers/search/${encodeURIComponent(query)}`),
+
+  // Get buyer statistics
+  getStats: () => apiClient.get('/buyers/stats')
 };
 
-// Sellers API - COMPLETE
+// Sellers API
 export const sellersAPI = {
   // Get all sellers
-  getAll: async (filters = {}) => {
-    const queryParams = new URLSearchParams(cleanData(filters)).toString();
-    const url = `/sellers${queryParams ? `?${queryParams}` : ''}`;
-    return apiCall(url);
+  getAll: (filters = {}) => {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') {
+        params.append(key, value);
+      }
+    });
+    const queryString = params.toString();
+    return apiClient.get(`/sellers${queryString ? `?${queryString}` : ''}`);
   },
 
-  // Get seller by ID
-  getById: async (id) => {
-    return apiCall(`/sellers/${id}`);
-  },
+  // Get single seller
+  getById: (id) => apiClient.get(`/sellers/${id}`),
 
   // Create new seller
-  create: async (sellerData) => {
-    const cleanedData = cleanData(sellerData);
-    const convertedData = convertTypes(cleanedData);
-    
-    // Client-side validation
-    if (!convertedData.firstName || !convertedData.lastName) {
-      throw new Error('Име и фамилия са задължителни полета');
-    }
-    
-    if (!convertedData.phone) {
-      throw new Error('Телефонният номер е задължителен');
-    }
-    
-    if (convertedData.email && !convertedData.email.includes('@')) {
-      throw new Error('Невалиден имейл адрес');
-    }
-
-    return apiCall('/sellers', {
-      method: 'POST',
-      body: JSON.stringify(convertedData)
-    });
-  },
+  create: (sellerData) => apiClient.post('/sellers', sellerData),
 
   // Update seller
-  update: async (id, sellerData) => {
-    const cleanedData = cleanData(sellerData);
-    const convertedData = convertTypes(cleanedData);
-    
-    // Client-side validation
-    if (convertedData.email && !convertedData.email.includes('@')) {
-      throw new Error('Невалиден имейл адрес');
-    }
-
-    return apiCall(`/sellers/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(convertedData)
-    });
-  },
+  update: (id, sellerData) => apiClient.put(`/sellers/${id}`, sellerData),
 
   // Delete seller
-  delete: async (id) => {
-    return apiCall(`/sellers/${id}`, { method: 'DELETE' });
-  },
+  delete: (id) => apiClient.delete(`/sellers/${id}`),
 
-  // Archive seller
-  archive: async (id) => {
-    return apiCall(`/sellers/${id}/archive`, { method: 'PUT' });
-  },
-
-  // Assign agent to seller
-  assignAgent: async (id, agentId) => {
-    return apiCall(`/sellers/${id}/assign-agent`, {
-      method: 'PUT',
-      body: JSON.stringify({ agentId })
-    });
-  },
+  // Archive/Unarchive seller
+  archive: (id, archive = true) => apiClient.post(`/sellers/${id}/archive`, { archive }),
 
   // Get seller properties
-  getProperties: async (id) => {
-    return apiCall(`/sellers/${id}/properties`);
-  }
+  getProperties: (id) => apiClient.get(`/sellers/${id}/properties`),
+
+  // Search sellers
+  search: (query) => apiClient.get(`/sellers/search/${encodeURIComponent(query)}`),
+
+  // Get seller statistics
+  getStats: () => apiClient.get('/sellers/stats')
 };
 
-// Tasks API - COMPLETE
+// Tasks API
 export const tasksAPI = {
   // Get all tasks
-  getAll: async (filters = {}) => {
-    const queryParams = new URLSearchParams(cleanData(filters)).toString();
-    const url = `/tasks${queryParams ? `?${queryParams}` : ''}`;
-    return apiCall(url);
+  getAll: (filters = {}) => {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') {
+        params.append(key, value);
+      }
+    });
+    const queryString = params.toString();
+    return apiClient.get(`/tasks${queryString ? `?${queryString}` : ''}`);
   },
 
-  // Get task by ID
-  getById: async (id) => {
-    return apiCall(`/tasks/${id}`);
-  },
+  // Get single task
+  getById: (id) => apiClient.get(`/tasks/${id}`),
 
   // Create new task
-  create: async (taskData) => {
-    const cleanedData = cleanData(taskData);
-    
-    // Client-side validation
-    if (!cleanedData.title || !cleanedData.description) {
-      throw new Error('Заглавие и описание са задължителни полета');
-    }
-
-    return apiCall('/tasks', {
-      method: 'POST',
-      body: JSON.stringify(cleanedData)
-    });
-  },
+  create: (taskData) => apiClient.post('/tasks', taskData),
 
   // Update task
-  update: async (id, taskData) => {
-    const cleanedData = cleanData(taskData);
-    return apiCall(`/tasks/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(cleanedData)
-    });
-  },
+  update: (id, taskData) => apiClient.put(`/tasks/${id}`, taskData),
 
   // Delete task
-  delete: async (id) => {
-    return apiCall(`/tasks/${id}`, { method: 'DELETE' });
-  },
+  delete: (id) => apiClient.delete(`/tasks/${id}`),
 
-  // Complete task
-  complete: async (id, notes = '') => {
-    return apiCall(`/tasks/${id}/complete`, {
-      method: 'PUT',
-      body: JSON.stringify({ notes })
-    });
-  },
-
-  // Reopen task
-  reopen: async (id) => {
-    return apiCall(`/tasks/${id}/reopen`, { method: 'PUT' });
-  },
+  // Mark task as completed
+  complete: (id) => apiClient.post(`/tasks/${id}/complete`),
 
   // Get overdue tasks
-  getOverdue: async (agentId = null) => {
-    const params = agentId ? `?agentId=${agentId}` : '';
-    return apiCall(`/tasks/overdue/list${params}`);
-  },
+  getOverdue: () => apiClient.get('/tasks/overdue'),
 
   // Get upcoming tasks
-  getUpcoming: async (agentId = null, days = 7) => {
-    const params = new URLSearchParams();
-    if (agentId) params.append('agentId', agentId);
-    params.append('days', days);
-    return apiCall(`/tasks/upcoming/list?${params.toString()}`);
-  },
+  getUpcoming: (days = 7) => apiClient.get(`/tasks/upcoming?days=${days}`),
 
-  // Get tasks summary
-  getSummary: async (agentId = null) => {
-    const params = agentId ? `?agentId=${agentId}` : '';
-    return apiCall(`/tasks/summary/stats${params}`);
-  }
+  // Get task statistics
+  getStats: () => apiClient.get('/tasks/stats')
 };
 
-// Analytics API - COMPLETE
+// Analytics API
 export const analyticsAPI = {
-  getDashboard: async (refresh = false) => {
-    const url = `/analytics/dashboard${refresh ? '?refresh=true' : ''}`;
-    return apiCall(url);
-  },
-  getKPIs: async () => apiCall('/analytics/kpis'),
-  getPropertyAnalytics: async (filters = {}) => {
-    const queryParams = new URLSearchParams(cleanData(filters)).toString();
-    return apiCall(`/analytics/properties${queryParams ? `?${queryParams}` : ''}`);
-  },
-  getPerformance: async (filters = {}) => {
-    const queryParams = new URLSearchParams(cleanData(filters)).toString();
-    return apiCall(`/analytics/performance${queryParams ? `?${queryParams}` : ''}`);
-  },
-  getTrends: async (filters = {}) => {
-    const queryParams = new URLSearchParams(cleanData(filters)).toString();
-    return apiCall(`/analytics/trends${queryParams ? `?${queryParams}` : ''}`);
-  },
-  getRevenue: async (period = '12') => {
-    return apiCall(`/analytics/revenue?period=${period}`);
-  }
+  // Get dashboard overview
+  getOverview: () => apiClient.get('/analytics/overview'),
+
+  // Get property analytics
+  getPropertyAnalytics: (period = '30d') => apiClient.get(`/analytics/properties?period=${period}`),
+
+  // Get buyer analytics
+  getBuyerAnalytics: (period = '30d') => apiClient.get(`/analytics/buyers?period=${period}`),
+
+  // Get seller analytics
+  getSellerAnalytics: (period = '30d') => apiClient.get(`/analytics/sellers?period=${period}`),
+
+  // Get agent performance
+  getAgentPerformance: (agentId, period = '30d') => 
+    apiClient.get(`/analytics/agents/${agentId}?period=${period}`),
+
+  // Get revenue analytics
+  getRevenueAnalytics: (period = '30d') => apiClient.get(`/analytics/revenue?period=${period}`),
+
+  // Get conversion analytics
+  getConversionAnalytics: (period = '30d') => apiClient.get(`/analytics/conversions?period=${period}`)
 };
 
-// Search API - COMPLETE
+// Search API
 export const searchAPI = {
-  properties: async (query, filters = {}) => {
-    return propertiesAPI.search(query, filters);
+  // Global search
+  search: (query, filters = {}) => {
+    const params = new URLSearchParams({ query });
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') {
+        params.append(key, value);
+      }
+    });
+    return apiClient.get(`/search?${params.toString()}`);
   },
-  buyers: async (query, filters = {}) => {
-    return buyersAPI.search(query, filters);
-  },
-  global: async (query) => {
-    return apiCall(`/search/global?q=${encodeURIComponent(query)}`);
-  }
+
+  // Advanced property search
+  searchProperties: (criteria) => apiClient.post('/search/properties', criteria),
+
+  // Search buyers by criteria
+  searchBuyers: (criteria) => apiClient.post('/search/buyers', criteria),
+
+  // Get search suggestions
+  getSuggestions: (query, type = 'all') => 
+    apiClient.get(`/search/suggestions?query=${encodeURIComponent(query)}&type=${type}`),
+
+  // Get autocomplete results
+  getAutocomplete: (query, field) => 
+    apiClient.get(`/search/autocomplete?query=${encodeURIComponent(query)}&field=${field}`)
+};
+
+// Auth API
+export const authAPI = {
+  // Get current user info
+  getCurrentUser: () => apiClient.get('/auth/user'),
+
+  // Update user profile
+  updateProfile: (userData) => apiClient.put('/auth/profile', userData),
+
+  // Get user permissions
+  getPermissions: () => apiClient.get('/auth/permissions'),
+
+  // Get user activity log
+  getActivityLog: (limit = 50) => apiClient.get(`/auth/activity?limit=${limit}`),
+
+  // Update user preferences
+  updatePreferences: (preferences) => apiClient.put('/auth/preferences', preferences)
+};
+
+// Health check API
+export const healthAPI = {
+  // Check API health
+  check: () => apiClient.get('/health'),
+
+  // Get API routes
+  getRoutes: () => apiClient.get('/routes')
 };
 
 // Export default object with all APIs
-export default {
+const api = {
   properties: propertiesAPI,
   buyers: buyersAPI,
   sellers: sellersAPI,
   tasks: tasksAPI,
   analytics: analyticsAPI,
-  search: searchAPI
+  search: searchAPI,
+  auth: authAPI,
+  health: healthAPI
 };
+
+export default api;

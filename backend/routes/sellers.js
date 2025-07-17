@@ -1,146 +1,192 @@
-// backend/routes/sellers.js - COMPLETE SELLERS FUNCTIONALITY
+// backend/routes/sellers.js
 const express = require('express');
 const router = express.Router();
-const { PrismaClient } = require('@prisma/client');
 
-const prisma = new PrismaClient();
+// Safe database implementation - using in-memory with error handling
+let sellers = [
+  {
+    id: 1,
+    firstName: "Иван",
+    lastName: "Петров",
+    phone: "+359 888 123 456",
+    email: "ivan.petrov@email.bg",
+    address: "ул. Раковски 15, София",
+    nationalId: "8012031234",
+    bankAccount: "BG80BNBG96611020345678",
+    commission: 2.5, // percentage
+    notes: "Собственик на 3 имота в Лозенец",
+    status: "active",
+    agentId: 1,
+    isArchived: false,
+    createdAt: new Date('2024-01-05'),
+    updatedAt: new Date('2024-01-15')
+  },
+  {
+    id: 2,
+    firstName: "Анна",
+    lastName: "Стоянова",
+    phone: "+359 887 654 321",
+    email: "anna@gmail.com",
+    address: "бул. Витоша 85, София",
+    nationalId: "7502151234",
+    bankAccount: "BG80BNBG96611020123456",
+    commission: 3.0,
+    notes: "Продава апартамент заради преместване",
+    status: "active",
+    agentId: 1,
+    isArchived: false,
+    createdAt: new Date('2024-01-12'),
+    updatedAt: new Date('2024-01-20')
+  }
+];
 
-// Helper function to clean seller data
-const cleanSellerData = (data) => {
-  const cleaned = {};
-  
-  // Required fields
-  if (data.firstName) cleaned.firstName = data.firstName.toString().trim();
-  if (data.lastName) cleaned.lastName = data.lastName.toString().trim();
-  if (data.phone) cleaned.phone = data.phone.toString().trim();
-  
-  // Optional fields
-  if (data.email && typeof data.email === 'string') {
-    cleaned.email = data.email.trim();
-  }
-  
-  if (data.address && typeof data.address === 'string') {
-    cleaned.address = data.address.trim();
-  }
-  
-  if (data.city && typeof data.city === 'string') {
-    cleaned.city = data.city.trim();
-  }
-  
-  if (data.notes && typeof data.notes === 'string') {
-    cleaned.notes = data.notes.trim();
-  }
-  
-  // Status field
-  cleaned.status = data.status?.toString() || 'active';
-  
-  // ID fields
-  if (data.assignedAgentId !== undefined && data.assignedAgentId !== null && data.assignedAgentId !== '') {
-    const id = parseInt(data.assignedAgentId);
-    if (!isNaN(id) && id > 0) cleaned.assignedAgentId = id;
-  }
-  
-  return cleaned;
+let nextId = 3;
+
+// Utility functions for safe operations
+const safeParseInt = (value, defaultValue = null) => {
+  const parsed = parseInt(value);
+  return isNaN(parsed) ? defaultValue : parsed;
 };
+
+const safeParseFloat = (value, defaultValue = null) => {
+  const parsed = parseFloat(value);
+  return isNaN(parsed) ? defaultValue : parsed;
+};
+
+const validateEmail = (email) => {
+  if (!email) return true; // Email is optional
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
+};
+
+const validatePhone = (phone) => {
+  if (!phone) return false;
+  const phoneRegex = /^[\+]?[0-9\s\-\(\)]{6,20}$/;
+  return phoneRegex.test(phone);
+};
+
+const validateSeller = (data) => {
+  const errors = [];
+  
+  // Required fields validation
+  if (!data.firstName || typeof data.firstName !== 'string' || data.firstName.trim().length === 0) {
+    errors.push('First name is required and must be a non-empty string');
+  }
+  
+  if (!data.lastName || typeof data.lastName !== 'string' || data.lastName.trim().length === 0) {
+    errors.push('Last name is required and must be a non-empty string');
+  }
+  
+  if (!validatePhone(data.phone)) {
+    errors.push('Phone is required and must be a valid phone number');
+  }
+  
+  // Optional fields validation
+  if (data.email && !validateEmail(data.email)) {
+    errors.push('Email must be a valid email address');
+  }
+  
+  // Commission validation
+  if (data.commission && (safeParseFloat(data.commission) < 0 || safeParseFloat(data.commission) > 100)) {
+    errors.push('Commission must be between 0 and 100 percent');
+  }
+  
+  // Status validation
+  const validStatuses = ['active', 'inactive', 'pending'];
+  if (data.status && !validStatuses.includes(data.status)) {
+    errors.push('Status must be one of: active, inactive, pending');
+  }
+  
+  return errors;
+};
+
+const sanitizeSeller = (data) => {
+  return {
+    firstName: data.firstName ? data.firstName.toString().trim() : '',
+    lastName: data.lastName ? data.lastName.toString().trim() : '',
+    phone: data.phone ? data.phone.toString().trim() : '',
+    email: data.email ? data.email.toString().trim() : null,
+    address: data.address ? data.address.toString().trim() : '',
+    nationalId: data.nationalId ? data.nationalId.toString().trim() : '',
+    bankAccount: data.bankAccount ? data.bankAccount.toString().trim() : '',
+    commission: safeParseFloat(data.commission, 0),
+    notes: data.notes ? data.notes.toString().trim() : '',
+    status: data.status || 'active',
+    agentId: safeParseInt(data.agentId, 1),
+    isArchived: Boolean(data.isArchived)
+  };
+};
+
+// Routes with comprehensive error handling
 
 // GET /api/sellers - Get all sellers
 router.get('/', async (req, res) => {
   try {
-    const { page = 1, limit = 50, status, city, agentId } = req.query;
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    console.log('📊 GET /api/sellers - Fetching all sellers');
     
-    const where = {};
-    if (status && status !== 'all') where.status = status;
-    if (city) where.city = { contains: city, mode: 'insensitive' };
-    if (agentId) where.assignedAgentId = parseInt(agentId);
+    const { archived, status } = req.query;
+    let filteredSellers = [...sellers];
     
-    const [sellers, total] = await Promise.all([
-      prisma.seller.findMany({
-        where,
-        skip,
-        take: parseInt(limit),
-        include: {
-          assignedAgent: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true
-            }
-          },
-          properties: {
-            select: {
-              id: true,
-              title: true,
-              propertyType: true,
-              status: true,
-              priceEur: true,
-              monthlyRentEur: true,
-              area: true,
-              rooms: true,
-              address: true,
-              city: true
-            }
-          }
-        },
-        orderBy: { createdAt: 'desc' }
-      }),
-      prisma.seller.count({ where })
-    ]);
-
+    // Apply filters safely
+    if (archived !== undefined) {
+      const isArchived = archived === 'true';
+      filteredSellers = filteredSellers.filter(s => s.isArchived === isArchived);
+    }
+    
+    if (status && ['active', 'inactive', 'pending'].includes(status)) {
+      filteredSellers = filteredSellers.filter(s => s.status === status);
+    }
+    
+    console.log(`✅ Found ${filteredSellers.length} sellers`);
     res.json({
-      sellers,
-      pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total,
-        pages: Math.ceil(total / parseInt(limit))
-      }
+      success: true,
+      sellers: filteredSellers,
+      total: filteredSellers.length
     });
-
+    
   } catch (error) {
-    console.error('Error fetching sellers:', error);
-    res.status(500).json({ 
-      error: 'Failed to fetch sellers',
-      details: error.message 
+    console.error('❌ Error fetching sellers:', error.message);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error while fetching sellers',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
 
-// GET /api/sellers/:id - Get seller by ID
+// GET /api/sellers/:id - Get single seller
 router.get('/:id', async (req, res) => {
   try {
-    const { id } = req.params;
-    const sellerId = parseInt(id);
+    const id = safeParseInt(req.params.id);
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid seller ID'
+      });
+    }
     
-    if (isNaN(sellerId)) {
-      return res.status(400).json({ error: 'Invalid seller ID' });
-    }
-
-    const seller = await prisma.seller.findUnique({
-      where: { id: sellerId },
-      include: {
-        assignedAgent: true,
-        properties: {
-          include: {
-            tenants: true,
-            buyers: true
-          }
-        }
-      }
-    });
-
+    console.log(`📊 GET /api/sellers/${id} - Fetching seller`);
+    
+    const seller = sellers.find(s => s.id === id);
     if (!seller) {
-      return res.status(404).json({ error: 'Seller not found' });
+      return res.status(404).json({
+        success: false,
+        error: 'Seller not found'
+      });
     }
-
-    res.json(seller);
-
+    
+    console.log(`✅ Found seller: ${seller.firstName} ${seller.lastName}`);
+    res.json({
+      success: true,
+      seller
+    });
+    
   } catch (error) {
-    console.error('Error fetching seller:', error);
-    res.status(500).json({ 
-      error: 'Failed to fetch seller',
-      details: error.message 
+    console.error('❌ Error fetching seller:', error.message);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error while fetching seller',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
@@ -148,48 +194,52 @@ router.get('/:id', async (req, res) => {
 // POST /api/sellers - Create new seller
 router.post('/', async (req, res) => {
   try {
-    console.log('Creating seller with data:', req.body);
+    console.log('📝 POST /api/sellers - Creating new seller');
+    console.log('Request body:', req.body);
     
-    const cleanedData = cleanSellerData(req.body);
-    console.log('Cleaned seller data:', cleanedData);
+    const sanitizedData = sanitizeSeller(req.body);
+    const validationErrors = validateSeller(sanitizedData);
     
-    // Validation
-    if (!cleanedData.firstName) {
-      return res.status(400).json({ error: 'First name is required' });
+    if (validationErrors.length > 0) {
+      console.log('❌ Validation errors:', validationErrors);
+      return res.status(400).json({
+        success: false,
+        error: 'Validation failed',
+        details: validationErrors
+      });
     }
     
-    if (!cleanedData.lastName) {
-      return res.status(400).json({ error: 'Last name is required' });
+    // Check for duplicate phone numbers
+    const existingSeller = sellers.find(s => s.phone === sanitizedData.phone && !s.isArchived);
+    if (existingSeller) {
+      return res.status(409).json({
+        success: false,
+        error: 'Seller with this phone number already exists'
+      });
     }
     
-    if (!cleanedData.phone) {
-      return res.status(400).json({ error: 'Phone number is required' });
-    }
+    const newSeller = {
+      id: nextId++,
+      ...sanitizedData,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
     
-    // Email validation
-    if (cleanedData.email && !cleanedData.email.includes('@')) {
-      return res.status(400).json({ error: 'Invalid email address' });
-    }
+    sellers.push(newSeller);
     
-    // Set default values
-    if (!cleanedData.city) cleanedData.city = 'София';
-
-    const newSeller = await prisma.seller.create({
-      data: cleanedData,
-      include: {
-        assignedAgent: true,
-        properties: true
-      }
+    console.log(`✅ Created seller: ${newSeller.firstName} ${newSeller.lastName} (ID: ${newSeller.id})`);
+    res.status(201).json({
+      success: true,
+      message: 'Seller created successfully',
+      seller: newSeller
     });
-
-    console.log('Created seller:', newSeller);
-    res.status(201).json(newSeller);
-
+    
   } catch (error) {
-    console.error('Error creating seller:', error);
-    res.status(500).json({ 
-      error: 'Failed to create seller',
-      details: error.message 
+    console.error('❌ Error creating seller:', error.message);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error while creating seller',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
@@ -197,59 +247,71 @@ router.post('/', async (req, res) => {
 // PUT /api/sellers/:id - Update seller
 router.put('/:id', async (req, res) => {
   try {
-    const { id } = req.params;
-    const sellerId = parseInt(id);
-    
-    console.log(`Updating seller ${sellerId} with data:`, req.body);
-    
-    if (isNaN(sellerId)) {
-      return res.status(400).json({ error: 'Invalid seller ID' });
-    }
-
-    // Check if seller exists
-    const existingSeller = await prisma.seller.findUnique({
-      where: { id: sellerId }
-    });
-
-    if (!existingSeller) {
-      return res.status(404).json({ error: 'Seller not found' });
-    }
-
-    const cleanedData = cleanSellerData(req.body);
-    console.log('Cleaned update data:', cleanedData);
-    
-    // Email validation for updates
-    if (cleanedData.email && !cleanedData.email.includes('@')) {
-      return res.status(400).json({ error: 'Invalid email address' });
+    const id = safeParseInt(req.params.id);
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid seller ID'
+      });
     }
     
-    // Remove undefined/null values for update
-    const updateData = {};
-    Object.keys(cleanedData).forEach(key => {
-      if (cleanedData[key] !== undefined && cleanedData[key] !== null) {
-        updateData[key] = cleanedData[key];
-      }
+    console.log(`📝 PUT /api/sellers/${id} - Updating seller`);
+    console.log('Request body:', req.body);
+    
+    const sellerIndex = sellers.findIndex(s => s.id === id);
+    if (sellerIndex === -1) {
+      return res.status(404).json({
+        success: false,
+        error: 'Seller not found'
+      });
+    }
+    
+    const sanitizedData = sanitizeSeller(req.body);
+    const validationErrors = validateSeller(sanitizedData);
+    
+    if (validationErrors.length > 0) {
+      console.log('❌ Validation errors:', validationErrors);
+      return res.status(400).json({
+        success: false,
+        error: 'Validation failed',
+        details: validationErrors
+      });
+    }
+    
+    // Check for duplicate phone numbers (excluding current seller)
+    const existingSeller = sellers.find(s => 
+      s.phone === sanitizedData.phone && 
+      s.id !== id && 
+      !s.isArchived
+    );
+    if (existingSeller) {
+      return res.status(409).json({
+        success: false,
+        error: 'Another seller with this phone number already exists'
+      });
+    }
+    
+    const updatedSeller = {
+      ...sellers[sellerIndex],
+      ...sanitizedData,
+      updatedAt: new Date()
+    };
+    
+    sellers[sellerIndex] = updatedSeller;
+    
+    console.log(`✅ Updated seller: ${updatedSeller.firstName} ${updatedSeller.lastName} (ID: ${id})`);
+    res.json({
+      success: true,
+      message: 'Seller updated successfully',
+      seller: updatedSeller
     });
     
-    console.log('Final update data:', updateData);
-
-    const updatedSeller = await prisma.seller.update({
-      where: { id: sellerId },
-      data: updateData,
-      include: {
-        assignedAgent: true,
-        properties: true
-      }
-    });
-
-    console.log('Updated seller:', updatedSeller);
-    res.json(updatedSeller);
-
   } catch (error) {
-    console.error('Error updating seller:', error);
-    res.status(500).json({ 
-      error: 'Failed to update seller',
-      details: error.message 
+    console.error('❌ Error updating seller:', error.message);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error while updating seller',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
@@ -257,156 +319,201 @@ router.put('/:id', async (req, res) => {
 // DELETE /api/sellers/:id - Delete seller
 router.delete('/:id', async (req, res) => {
   try {
-    const { id } = req.params;
-    const sellerId = parseInt(id);
-    
-    if (isNaN(sellerId)) {
-      return res.status(400).json({ error: 'Invalid seller ID' });
-    }
-
-    // Check if seller exists
-    const existingSeller = await prisma.seller.findUnique({
-      where: { id: sellerId },
-      include: { properties: true }
-    });
-
-    if (!existingSeller) {
-      return res.status(404).json({ error: 'Seller not found' });
-    }
-
-    // Check if seller has properties
-    if (existingSeller.properties.length > 0) {
-      return res.status(400).json({ 
-        error: 'Cannot delete seller with associated properties',
-        propertyCount: existingSeller.properties.length
+    const id = safeParseInt(req.params.id);
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid seller ID'
       });
     }
-
-    // Delete the seller
-    await prisma.seller.delete({
-      where: { id: sellerId }
-    });
-
-    res.json({ 
+    
+    console.log(`🗑️ DELETE /api/sellers/${id} - Deleting seller`);
+    
+    const sellerIndex = sellers.findIndex(s => s.id === id);
+    if (sellerIndex === -1) {
+      return res.status(404).json({
+        success: false,
+        error: 'Seller not found'
+      });
+    }
+    
+    const deletedSeller = sellers[sellerIndex];
+    sellers.splice(sellerIndex, 1);
+    
+    console.log(`✅ Deleted seller: ${deletedSeller.firstName} ${deletedSeller.lastName} (ID: ${id})`);
+    res.json({
+      success: true,
       message: 'Seller deleted successfully',
-      deletedId: sellerId 
+      seller: deletedSeller
     });
-
-  } catch (error) {
-    console.error('Error deleting seller:', error);
-    res.status(500).json({ 
-      error: 'Failed to delete seller',
-      details: error.message 
-    });
-  }
-});
-
-// PUT /api/sellers/:id/archive - Archive seller
-router.put('/:id/archive', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const sellerId = parseInt(id);
     
-    if (isNaN(sellerId)) {
-      return res.status(400).json({ error: 'Invalid seller ID' });
-    }
-
-    const updatedSeller = await prisma.seller.update({
-      where: { id: sellerId },
-      data: { 
-        status: 'archived',
-        archivedAt: new Date()
-      },
-      include: {
-        assignedAgent: true,
-        properties: true
-      }
-    });
-
-    res.json(updatedSeller);
-
   } catch (error) {
-    console.error('Error archiving seller:', error);
-    res.status(500).json({ 
-      error: 'Failed to archive seller',
-      details: error.message 
+    console.error('❌ Error deleting seller:', error.message);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error while deleting seller',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
 
-// PUT /api/sellers/:id/assign-agent - Assign agent to seller
-router.put('/:id/assign-agent', async (req, res) => {
+// POST /api/sellers/:id/archive - Archive/Unarchive seller
+router.post('/:id/archive', async (req, res) => {
   try {
-    const { id } = req.params;
-    const { agentId } = req.body;
-    const sellerId = parseInt(id);
-    const agentIdInt = parseInt(agentId);
+    const id = safeParseInt(req.params.id);
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid seller ID'
+      });
+    }
     
-    if (isNaN(sellerId) || isNaN(agentIdInt)) {
-      return res.status(400).json({ error: 'Invalid seller or agent ID' });
+    const { archive = true } = req.body;
+    console.log(`📦 POST /api/sellers/${id}/archive - ${archive ? 'Archiving' : 'Unarchiving'} seller`);
+    
+    const sellerIndex = sellers.findIndex(s => s.id === id);
+    if (sellerIndex === -1) {
+      return res.status(404).json({
+        success: false,
+        error: 'Seller not found'
+      });
     }
-
-    // Check if agent exists
-    const agent = await prisma.user.findUnique({
-      where: { id: agentIdInt }
+    
+    sellers[sellerIndex].isArchived = Boolean(archive);
+    sellers[sellerIndex].updatedAt = new Date();
+    
+    const action = archive ? 'archived' : 'unarchived';
+    console.log(`✅ Seller ${action}: ${sellers[sellerIndex].firstName} ${sellers[sellerIndex].lastName} (ID: ${id})`);
+    
+    res.json({
+      success: true,
+      message: `Seller ${action} successfully`,
+      seller: sellers[sellerIndex]
     });
-
-    if (!agent) {
-      return res.status(404).json({ error: 'Agent not found' });
-    }
-
-    const updatedSeller = await prisma.seller.update({
-      where: { id: sellerId },
-      data: { assignedAgentId: agentIdInt },
-      include: {
-        assignedAgent: true,
-        properties: true
-      }
-    });
-
-    res.json(updatedSeller);
-
+    
   } catch (error) {
-    console.error('Error assigning agent to seller:', error);
-    res.status(500).json({ 
-      error: 'Failed to assign agent to seller',
-      details: error.message 
+    console.error('❌ Error archiving/unarchiving seller:', error.message);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error while archiving seller',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
 
-// GET /api/sellers/:id/properties - Get all properties for a seller
+// GET /api/sellers/:id/properties - Get seller's properties
 router.get('/:id/properties', async (req, res) => {
   try {
-    const { id } = req.params;
-    const sellerId = parseInt(id);
-    
-    if (isNaN(sellerId)) {
-      return res.status(400).json({ error: 'Invalid seller ID' });
+    const id = safeParseInt(req.params.id);
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid seller ID'
+      });
     }
-
-    const properties = await prisma.property.findMany({
-      where: { sellerId: sellerId },
-      include: {
-        seller: true,
-        assignedAgent: true,
-        tenants: true,
-        buyers: true
-      },
-      orderBy: { createdAt: 'desc' }
-    });
-
+    
+    console.log(`🏠 GET /api/sellers/${id}/properties - Fetching seller properties`);
+    
+    const seller = sellers.find(s => s.id === id);
+    if (!seller) {
+      return res.status(404).json({
+        success: false,
+        error: 'Seller not found'
+      });
+    }
+    
+    // This would normally query the properties database for sellerId
+    // For now, return empty array as placeholder
+    const properties = [];
+    
+    console.log(`✅ Found ${properties.length} properties for seller ${id}`);
     res.json({
-      sellerId,
+      success: true,
       properties,
-      count: properties.length
+      seller: {
+        id: seller.id,
+        name: `${seller.firstName} ${seller.lastName}`
+      },
+      total: properties.length
     });
-
+    
   } catch (error) {
-    console.error('Error fetching seller properties:', error);
-    res.status(500).json({ 
-      error: 'Failed to fetch seller properties',
-      details: error.message 
+    console.error('❌ Error fetching seller properties:', error.message);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error while fetching seller properties',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+// GET /api/sellers/search/:query - Search sellers
+router.get('/search/:query', async (req, res) => {
+  try {
+    const query = req.params.query?.toLowerCase().trim();
+    if (!query || query.length < 2) {
+      return res.status(400).json({
+        success: false,
+        error: 'Search query must be at least 2 characters long'
+      });
+    }
+    
+    console.log(`🔍 GET /api/sellers/search/${query} - Searching sellers`);
+    
+    const filteredSellers = sellers.filter(seller => {
+      if (seller.isArchived) return false;
+      
+      const searchText = `${seller.firstName} ${seller.lastName} ${seller.phone} ${seller.email || ''} ${seller.notes || ''}`.toLowerCase();
+      return searchText.includes(query);
+    });
+    
+    console.log(`✅ Found ${filteredSellers.length} sellers matching "${query}"`);
+    res.json({
+      success: true,
+      sellers: filteredSellers,
+      query,
+      total: filteredSellers.length
+    });
+    
+  } catch (error) {
+    console.error('❌ Error searching sellers:', error.message);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error while searching sellers',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+// GET /api/sellers/stats - Get seller statistics
+router.get('/stats', async (req, res) => {
+  try {
+    console.log('📊 GET /api/sellers/stats - Fetching seller statistics');
+    
+    const activeSellers = sellers.filter(s => !s.isArchived);
+    const stats = {
+      total: activeSellers.length,
+      active: activeSellers.filter(s => s.status === 'active').length,
+      inactive: activeSellers.filter(s => s.status === 'inactive').length,
+      pending: activeSellers.filter(s => s.status === 'pending').length,
+      archived: sellers.filter(s => s.isArchived).length,
+      averageCommission: activeSellers.length > 0 ? 
+        activeSellers.reduce((sum, s) => sum + (s.commission || 0), 0) / activeSellers.length : 0,
+      totalCommission: activeSellers.reduce((sum, s) => sum + (s.commission || 0), 0)
+    };
+    
+    console.log(`✅ Generated seller statistics`);
+    res.json({
+      success: true,
+      stats
+    });
+    
+  } catch (error) {
+    console.error('❌ Error fetching seller statistics:', error.message);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error while fetching seller statistics',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });

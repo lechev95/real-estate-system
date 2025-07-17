@@ -1,311 +1,371 @@
-// backend/server.js - COMPLETE SERVER WITH ALL ROUTES
+// backend/server.js
 const express = require('express');
 const cors = require('cors');
-const { PrismaClient } = require('@prisma/client');
+const path = require('path');
 
 const app = express();
-const prisma = new PrismaClient();
+const PORT = process.env.PORT || 5000;
 
-// Environment variables
-const PORT = process.env.PORT || 3001;
-const FRONTEND_URL = process.env.FRONTEND_URL || 'https://real-estate-crm-frontend.onrender.com';
-
-console.log('🚀 Starting Real Estate CRM API Server...');
-console.log('📊 Environment:', process.env.NODE_ENV || 'development');
-console.log('🌐 Frontend URL:', FRONTEND_URL);
-console.log('🔌 Port:', PORT);
-
-// Middleware
-app.use(cors({
+// Enhanced CORS configuration
+const corsOptions = {
   origin: [
-    FRONTEND_URL,
     'http://localhost:3000',
     'http://localhost:5173',
-    'https://real-estate-crm-frontend.onrender.com'
+    'https://real-estate-crm-frontend.onrender.com',
+    /\.vercel\.app$/,
+    /\.netlify\.app$/
   ],
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With']
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+};
+
+app.use(cors(corsOptions));
+
+// Enhanced middleware with better error handling
+app.use(express.json({ 
+  limit: '10mb',
+  strict: true
 }));
 
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.urlencoded({ 
+  extended: true,
+  limit: '10mb'
+}));
 
 // Request logging middleware
 app.use((req, res, next) => {
-  console.log(`📝 ${new Date().toISOString()} - ${req.method} ${req.path}`);
-  if (req.body && Object.keys(req.body).length > 0) {
-    console.log('📋 Request Body:', req.body);
+  const timestamp = new Date().toISOString();
+  console.log(`${timestamp} - ${req.method} ${req.path} - IP: ${req.ip}`);
+  
+  // Log request body for POST/PUT requests (excluding sensitive data)
+  if ((req.method === 'POST' || req.method === 'PUT') && req.body) {
+    const sanitizedBody = { ...req.body };
+    // Remove sensitive fields if any
+    delete sanitizedBody.password;
+    delete sanitizedBody.token;
+    console.log(`Request body:`, sanitizedBody);
   }
+  
   next();
 });
 
-// Import routes
-let propertiesRoutes, buyersRoutes, sellersRoutes, tasksRoutes, searchRoutes, analyticsRoutes, authRoutes;
-
-try {
-  propertiesRoutes = require('./routes/properties');
-  console.log('✅ Properties routes loaded');
-} catch (error) {
-  console.log('❌ Properties routes not found:', error.message);
-}
-
-try {
-  buyersRoutes = require('./routes/buyers');
-  console.log('✅ Buyers routes loaded');
-} catch (error) {
-  console.log('❌ Buyers routes not found:', error.message);
-}
-
-try {
-  sellersRoutes = require('./routes/sellers');
-  console.log('✅ Sellers routes loaded');
-} catch (error) {
-  console.log('❌ Sellers routes not found:', error.message);
-}
-
-try {
-  tasksRoutes = require('./routes/tasks');
-  console.log('✅ Tasks routes loaded');
-} catch (error) {
-  console.log('❌ Tasks routes not found:', error.message);
-}
-
-try {
-  searchRoutes = require('./routes/search');
-  console.log('✅ Search routes loaded');
-} catch (error) {
-  console.log('❌ Search routes not found:', error.message);
-}
-
-try {
-  analyticsRoutes = require('./routes/analytics');
-  console.log('✅ Analytics routes loaded');
-} catch (error) {
-  console.log('❌ Analytics routes not found:', error.message);
-}
-
-try {
-  authRoutes = require('./routes/auth');
-  console.log('✅ Auth routes loaded');
-} catch (error) {
-  console.log('❌ Auth routes not found:', error.message);
-}
-
-// Health check endpoint
-app.get('/health', async (req, res) => {
-  try {
-    // Test database connection
-    await prisma.$queryRaw`SELECT 1`;
-    
-    res.json({
-      status: 'healthy',
-      timestamp: new Date().toISOString(),
-      environment: process.env.NODE_ENV || 'development',
-      database: 'connected',
-      routes: {
-        properties: !!propertiesRoutes,
-        buyers: !!buyersRoutes,
-        sellers: !!sellersRoutes,
-        tasks: !!tasksRoutes,
-        search: !!searchRoutes,
-        analytics: !!analyticsRoutes,
-        auth: !!authRoutes
-      }
-    });
-  } catch (error) {
-    console.error('❌ Health check failed:', error);
-    res.status(500).json({
-      status: 'unhealthy',
-      timestamp: new Date().toISOString(),
-      error: error.message,
-      database: 'disconnected'
-    });
-  }
+// Security headers middleware
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  next();
 });
 
-// API Routes - Mount all available routes
-if (propertiesRoutes) {
-  app.use('/api/properties', propertiesRoutes);
-  console.log('🏠 Properties routes mounted at /api/properties');
-}
-
-if (buyersRoutes) {
-  app.use('/api/buyers', buyersRoutes);
-  console.log('👥 Buyers routes mounted at /api/buyers');
-}
-
-if (sellersRoutes) {
-  app.use('/api/sellers', sellersRoutes);
-  console.log('🏪 Sellers routes mounted at /api/sellers');
-}
-
-if (tasksRoutes) {
-  app.use('/api/tasks', tasksRoutes);
-  console.log('📅 Tasks routes mounted at /api/tasks');
-}
-
-if (searchRoutes) {
-  app.use('/api/search', searchRoutes);
-  console.log('🔍 Search routes mounted at /api/search');
-}
-
-if (analyticsRoutes) {
-  app.use('/api/analytics', analyticsRoutes);
-  console.log('📊 Analytics routes mounted at /api/analytics');
-}
-
-if (authRoutes) {
-  app.use('/api/auth', authRoutes);
-  console.log('🔐 Auth routes mounted at /api/auth');
-}
-
-// Root endpoint
-app.get('/', (req, res) => {
-  res.json({
-    message: '🏠 Real Estate CRM API Server',
-    version: '1.0.0',
-    status: 'running',
+// Health check endpoint with detailed status
+app.get('/health', (req, res) => {
+  const healthStatus = {
+    status: 'healthy',
     timestamp: new Date().toISOString(),
-    endpoints: {
-      health: '/health',
+    uptime: process.uptime(),
+    environment: process.env.NODE_ENV || 'development',
+    version: '1.0.0',
+    routes: {
       properties: '/api/properties',
       buyers: '/api/buyers',
       sellers: '/api/sellers',
       tasks: '/api/tasks',
-      search: '/api/search',
       analytics: '/api/analytics',
+      search: '/api/search',
       auth: '/api/auth'
     },
-    documentation: 'Available endpoints listed above'
-  });
+    memory: {
+      used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + ' MB',
+      total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024) + ' MB'
+    }
+  };
+  
+  console.log('✅ Health check passed');
+  res.json(healthStatus);
 });
 
-// List all available routes (for debugging)
+// API Routes with error handling wrappers
+const asyncHandler = (fn) => (req, res, next) => {
+  Promise.resolve(fn(req, res, next)).catch(next);
+};
+
+// Import and mount routes with comprehensive error handling
+try {
+  // Properties routes
+  const propertiesRoutes = require('./routes/properties');
+  app.use('/api/properties', asyncHandler(async (req, res, next) => {
+    propertiesRoutes(req, res, next);
+  }));
+  console.log('✅ Properties routes loaded');
+} catch (error) {
+  console.warn('⚠️ Properties routes not available:', error.message);
+}
+
+try {
+  // Buyers routes
+  const buyersRoutes = require('./routes/buyers');
+  app.use('/api/buyers', asyncHandler(async (req, res, next) => {
+    buyersRoutes(req, res, next);
+  }));
+  console.log('✅ Buyers routes loaded');
+} catch (error) {
+  console.warn('⚠️ Buyers routes not available:', error.message);
+}
+
+try {
+  // Sellers routes
+  const sellersRoutes = require('./routes/sellers');
+  app.use('/api/sellers', asyncHandler(async (req, res, next) => {
+    sellersRoutes(req, res, next);
+  }));
+  console.log('✅ Sellers routes loaded');
+} catch (error) {
+  console.warn('⚠️ Sellers routes not available:', error.message);
+}
+
+try {
+  // Tasks routes
+  const tasksRoutes = require('./routes/tasks');
+  app.use('/api/tasks', asyncHandler(async (req, res, next) => {
+    tasksRoutes(req, res, next);
+  }));
+  console.log('✅ Tasks routes loaded');
+} catch (error) {
+  console.warn('⚠️ Tasks routes not available:', error.message);
+}
+
+try {
+  // Analytics routes
+  const analyticsRoutes = require('./routes/analytics');
+  app.use('/api/analytics', asyncHandler(async (req, res, next) => {
+    analyticsRoutes(req, res, next);
+  }));
+  console.log('✅ Analytics routes loaded');
+} catch (error) {
+  console.warn('⚠️ Analytics routes not available:', error.message);
+}
+
+try {
+  // Search routes
+  const searchRoutes = require('./routes/search');
+  app.use('/api/search', asyncHandler(async (req, res, next) => {
+    searchRoutes(req, res, next);
+  }));
+  console.log('✅ Search routes loaded');
+} catch (error) {
+  console.warn('⚠️ Search routes not available:', error.message);
+}
+
+try {
+  // Auth routes
+  const authRoutes = require('./routes/auth');
+  app.use('/api/auth', asyncHandler(async (req, res, next) => {
+    authRoutes(req, res, next);
+  }));
+  console.log('✅ Auth routes loaded');
+} catch (error) {
+  console.warn('⚠️ Auth routes not available:', error.message);
+}
+
+// API routes listing endpoint
 app.get('/api/routes', (req, res) => {
-  const routes = [];
-  
-  app._router.stack.forEach((middleware) => {
-    if (middleware.route) {
-      // Direct routes
-      routes.push({
-        method: Object.keys(middleware.route.methods)[0].toUpperCase(),
-        path: middleware.route.path
-      });
-    } else if (middleware.name === 'router') {
-      // Router middleware
-      middleware.handle.stack.forEach((handler) => {
-        if (handler.route) {
-          const basePath = middleware.regexp.source
-            .replace('\\', '')
-            .replace('(?=\\/|$)', '')
-            .replace('^', '')
-            .replace('$', '');
-          
-          routes.push({
-            method: Object.keys(handler.route.methods)[0].toUpperCase(),
-            path: basePath + handler.route.path
-          });
-        }
-      });
-    }
-  });
-  
   res.json({
     message: 'Available API routes',
-    count: routes.length,
-    routes: routes.sort((a, b) => a.path.localeCompare(b.path))
+    routes: [
+      {
+        path: '/api/properties',
+        methods: ['GET', 'POST', 'PUT', 'DELETE'],
+        description: 'Property management endpoints'
+      },
+      {
+        path: '/api/buyers',
+        methods: ['GET', 'POST', 'PUT', 'DELETE'],
+        description: 'Buyer management endpoints'
+      },
+      {
+        path: '/api/sellers',
+        methods: ['GET', 'POST', 'PUT', 'DELETE'],
+        description: 'Seller management endpoints'
+      },
+      {
+        path: '/api/tasks',
+        methods: ['GET', 'POST', 'PUT', 'DELETE'],
+        description: 'Task management endpoints'
+      },
+      {
+        path: '/api/analytics',
+        methods: ['GET'],
+        description: 'Analytics and reporting endpoints'
+      },
+      {
+        path: '/api/search',
+        methods: ['GET', 'POST'],
+        description: 'Search and filtering endpoints'
+      },
+      {
+        path: '/api/auth',
+        methods: ['GET', 'POST', 'PUT'],
+        description: 'Authentication endpoints'
+      }
+    ],
+    health: '/health',
+    version: '1.0.0'
   });
 });
 
-// Error handling middleware
-app.use((err, req, res, next) => {
-  console.error('💥 Server Error:', err);
-  
-  if (err.name === 'ValidationError') {
-    return res.status(400).json({
-      error: 'Validation Error',
-      details: err.message
-    });
-  }
-  
-  if (err.name === 'PrismaClientKnownRequestError') {
-    return res.status(400).json({
-      error: 'Database Error',
-      details: err.message
-    });
-  }
-  
-  res.status(500).json({
-    error: 'Internal Server Error',
-    message: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong',
-    timestamp: new Date().toISOString()
+// Root endpoint
+app.get('/', (req, res) => {
+  res.json({
+    message: 'Real Estate CRM API',
+    version: '1.0.0',
+    status: 'running',
+    endpoints: {
+      health: '/health',
+      routes: '/api/routes',
+      properties: '/api/properties',
+      buyers: '/api/buyers',
+      sellers: '/api/sellers',
+      tasks: '/api/tasks',
+      analytics: '/api/analytics',
+      search: '/api/search',
+      auth: '/api/auth'
+    },
+    documentation: 'Visit /api/routes for detailed endpoint information'
   });
 });
 
-// Handle 404 - Route not found
-app.use('*', (req, res) => {
-  console.log(`❌ Route not found: ${req.method} ${req.originalUrl}`);
-  
+// Catch-all for API routes that don't exist
+app.all('/api/*', (req, res) => {
   res.status(404).json({
+    success: false,
+    error: 'API endpoint not found',
+    message: `The endpoint ${req.method} ${req.path} does not exist`,
+    availableRoutes: '/api/routes',
+    requestedPath: req.path,
+    method: req.method
+  });
+});
+
+// Serve static files from React build (for production)
+if (process.env.NODE_ENV === 'production') {
+  const buildPath = path.join(__dirname, '..', 'frontend', 'dist');
+  app.use(express.static(buildPath));
+  
+  // Handle React routing
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(buildPath, 'index.html'));
+  });
+  
+  console.log('📦 Serving static files from:', buildPath);
+}
+
+// JSON parsing error handler
+app.use((error, req, res, next) => {
+  if (error instanceof SyntaxError && error.status === 400 && 'body' in error) {
+    console.error('❌ JSON parsing error:', error.message);
+    return res.status(400).json({
+      success: false,
+      error: 'Invalid JSON format',
+      message: 'Please check your request body format',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+  next(error);
+});
+
+// Enhanced error handling middleware
+app.use((error, req, res, next) => {
+  const timestamp = new Date().toISOString();
+  console.error(`${timestamp} - Error in ${req.method} ${req.path}:`, error);
+  
+  // Default error status
+  let status = error.status || error.statusCode || 500;
+  let message = error.message || 'Internal server error';
+  
+  // Handle specific error types
+  if (error.name === 'ValidationError') {
+    status = 400;
+    message = 'Validation failed';
+  } else if (error.name === 'CastError') {
+    status = 400;
+    message = 'Invalid data format';
+  } else if (error.code === 'ECONNREFUSED') {
+    status = 503;
+    message = 'Service temporarily unavailable';
+  } else if (error.code === 'ENOTFOUND') {
+    status = 502;
+    message = 'External service not found';
+  }
+  
+  // Don't expose internal errors in production
+  if (status === 500 && process.env.NODE_ENV === 'production') {
+    message = 'Internal server error';
+  }
+  
+  const errorResponse = {
+    success: false,
+    error: message,
+    timestamp,
+    path: req.path,
+    method: req.method,
+    status
+  };
+  
+  // Include stack trace and details only in development
+  if (process.env.NODE_ENV === 'development') {
+    errorResponse.details = error.message;
+    errorResponse.stack = error.stack;
+  }
+  
+  res.status(status).json(errorResponse);
+});
+
+// 404 handler for non-API routes
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
     error: 'Route not found',
-    message: `The endpoint ${req.method} ${req.originalUrl} does not exist`,
+    message: `The route ${req.method} ${req.path} does not exist`,
     availableEndpoints: {
-      health: 'GET /health',
-      root: 'GET /',
-      routes: 'GET /api/routes',
-      properties: 'GET|POST|PUT|DELETE /api/properties',
-      buyers: 'GET|POST|PUT|DELETE /api/buyers',
-      sellers: 'GET|POST|PUT|DELETE /api/sellers',
-      tasks: 'GET|POST|PUT|DELETE /api/tasks',
-      search: 'GET /api/search/*',
-      analytics: 'GET /api/analytics/*'
+      api: '/api/routes',
+      health: '/health'
     },
     timestamp: new Date().toISOString()
   });
 });
 
-// Graceful shutdown
-process.on('SIGTERM', async () => {
-  console.log('🛑 SIGTERM received, shutting down gracefully...');
-  await prisma.$disconnect();
+// Graceful shutdown handling
+process.on('SIGTERM', () => {
+  console.log('🔄 SIGTERM received, shutting down gracefully...');
   process.exit(0);
 });
 
-process.on('SIGINT', async () => {
-  console.log('🛑 SIGINT received, shutting down gracefully...');
-  await prisma.$disconnect();
+process.on('SIGINT', () => {
+  console.log('🔄 SIGINT received, shutting down gracefully...');
   process.exit(0);
 });
 
-// Start server
-const server = app.listen(PORT, () => {
-  console.log(`\n🎉 Real Estate CRM API Server is running!`);
-  console.log(`📍 Server URL: http://localhost:${PORT}`);
-  console.log(`🌐 Health Check: http://localhost:${PORT}/health`);
-  console.log(`📋 API Routes: http://localhost:${PORT}/api/routes`);
-  console.log(`🔗 CORS enabled for: ${FRONTEND_URL}`);
-  console.log(`⏰ Started at: ${new Date().toISOString()}\n`);
-});
-
-server.on('error', (error) => {
-  if (error.code === 'EADDRINUSE') {
-    console.error(`❌ Port ${PORT} is already in use`);
-  } else {
-    console.error('❌ Server error:', error);
-  }
-  process.exit(1);
-});
-
-// Handle unhandled promise rejections
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('💥 Unhandled Rejection at:', promise, 'reason:', reason);
-});
-
-// Handle uncaught exceptions
 process.on('uncaughtException', (error) => {
   console.error('💥 Uncaught Exception:', error);
   process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('💥 Unhandled Rejection at:', promise, 'reason:', reason);
+  process.exit(1);
+});
+
+// Start server
+app.listen(PORT, () => {
+  console.log('🚀 Real Estate CRM API Server Started');
+  console.log('📍 Server Details:');
+  console.log(`   ✅ Port: ${PORT}`);
+  console.log(`   ✅ Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`   ✅ Health check: http://localhost:${PORT}/health`);
+  console.log(`   ✅ API routes: http://localhost:${PORT}/api/routes`);
+  console.log(`   ✅ Base URL: http://localhost:${PORT}`);
+  console.log('📱 Ready to accept requests!');
 });
 
 module.exports = app;
