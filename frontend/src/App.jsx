@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { propertiesAPI, buyersAPI } from './services/api';
+import { propertiesAPI, buyersAPI, sellersAPI, tasksAPI } from './services/api';
 
 // Exchange rate
 const EUR_TO_BGN_RATE = 1.95583;
@@ -144,10 +144,6 @@ const styles = {
     overflow: 'hidden',
     transition: 'transform 0.2s, box-shadow 0.2s',
     cursor: 'pointer'
-  },
-  cardHover: {
-    transform: 'translateY(-4px)',
-    boxShadow: '0 10px 25px rgba(0,0,0,0.15)'
   },
   cardImage: {
     height: '200px',
@@ -433,10 +429,508 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'center',
     fontWeight: 'bold'
+  },
+  peopleSection: {
+    marginTop: '1rem',
+    padding: '0.75rem',
+    backgroundColor: '#f8fafc',
+    borderRadius: '0.5rem',
+    fontSize: '0.875rem'
+  },
+  personItem: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '0.25rem 0'
   }
 };
 
-// Property Modal Component
+// Enhanced Property Card Component
+const EnhancedPropertyCard = ({ 
+  property, 
+  currency, 
+  formatPrice, 
+  onEdit, 
+  onDelete, 
+  onArchive, 
+  onUnarchive,
+  onAssignSeller,
+  onAssignBuyer,
+  onViewingIncrement,
+  buyers = [],
+  sellers = []
+}) => {
+  const [showActions, setShowActions] = useState(false);
+  const [showSellerModal, setShowSellerModal] = useState(false);
+  const [showBuyerModal, setShowBuyerModal] = useState(false);
+  const [selectedSeller, setSelectedSeller] = useState('');
+  const [selectedBuyer, setSelectedBuyer] = useState('');
+  const [assignmentType, setAssignmentType] = useState('buyer');
+
+  const getStatusBadgeStyle = (status) => {
+    const baseStyle = {...styles.statusBadge};
+    switch(status?.toLowerCase()) {
+      case 'available': return {...baseStyle, backgroundColor: '#10b981'};
+      case 'rented': return {...baseStyle, backgroundColor: '#f59e0b'};
+      case 'managed': return {...baseStyle, backgroundColor: '#3b82f6'};
+      case 'sold': return {...baseStyle, backgroundColor: '#8b5cf6'};
+      case 'archived': return {...baseStyle, backgroundColor: '#6b7280'};
+      default: return {...baseStyle, backgroundColor: '#6b7280'};
+    }
+  };
+
+  const getStatusLabel = (status) => {
+    switch(status?.toLowerCase()) {
+      case 'available': return '✅ Свободен';
+      case 'rented': return '🔶 Отдаден';
+      case 'managed': return '🔷 Управляван';
+      case 'sold': return '💜 Продаден';
+      case 'archived': return '📦 Архивиран';
+      default: return '❓ Неопределен';
+    }
+  };
+
+  const handleAssignSeller = async () => {
+    if (selectedSeller && onAssignSeller) {
+      await onAssignSeller(property.id, parseInt(selectedSeller));
+      setShowSellerModal(false);
+      setSelectedSeller('');
+    }
+  };
+
+  const handleAssignBuyer = async () => {
+    if (selectedBuyer && onAssignBuyer) {
+      await onAssignBuyer(property.id, parseInt(selectedBuyer), assignmentType);
+      setShowBuyerModal(false);
+      setSelectedBuyer('');
+    }
+  };
+
+  return (
+    <div 
+      style={{
+        ...styles.card,
+        opacity: property.status === 'archived' ? 0.7 : 1
+      }}
+      onMouseOver={(e) => {
+        e.currentTarget.style.transform = 'translateY(-4px)';
+        e.currentTarget.style.boxShadow = '0 10px 25px rgba(0,0,0,0.15)';
+      }}
+      onMouseOut={(e) => {
+        e.currentTarget.style.transform = 'translateY(0)';
+        e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.1)';
+      }}
+    >
+      <div style={{
+        ...styles.cardImage,
+        background: property.status === 'archived' 
+          ? 'linear-gradient(135deg, #6b7280 0%, #9ca3af 100%)'
+          : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+      }}>
+        <div style={styles.cardImageIcon}>🏠</div>
+        <div style={getStatusBadgeStyle(property.status)}>
+          {getStatusLabel(property.status)}
+        </div>
+        {property.status === 'archived' && (
+          <div style={{
+            position: 'absolute',
+            top: '1rem',
+            right: '1rem',
+            padding: '0.25rem 0.75rem',
+            borderRadius: '9999px',
+            fontSize: '0.75rem',
+            fontWeight: '600',
+            color: 'white',
+            backgroundColor: '#6b7280'
+          }}>
+            📦 Архивиран
+          </div>
+        )}
+      </div>
+
+      <div style={styles.cardContent}>
+        <div style={{...styles.cardTitle, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start'}}>
+          <span>{property.title}</span>
+          <div style={{position: 'relative'}}>
+            <button
+              style={{
+                background: 'none',
+                border: 'none',
+                fontSize: '1.5rem',
+                cursor: 'pointer',
+                padding: '0.25rem',
+                borderRadius: '50%',
+                color: '#6b7280'
+              }}
+              onClick={() => setShowActions(!showActions)}
+              onMouseOver={(e) => e.target.style.backgroundColor = '#f3f4f6'}
+              onMouseOut={(e) => e.target.style.backgroundColor = 'transparent'}
+            >
+              ⋮
+            </button>
+            
+            {showActions && (
+              <div style={{
+                position: 'absolute',
+                top: '2.5rem',
+                right: '0',
+                backgroundColor: 'white',
+                border: '1px solid #e5e7eb',
+                borderRadius: '0.5rem',
+                boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+                zIndex: 10,
+                minWidth: '200px'
+              }}>
+                <div 
+                  style={{
+                    padding: '0.75rem 1rem',
+                    fontSize: '0.875rem',
+                    cursor: 'pointer',
+                    borderBottom: '1px solid #f3f4f6',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem'
+                  }}
+                  onClick={() => { onEdit(property); setShowActions(false); }}
+                  onMouseOver={(e) => e.target.style.backgroundColor = '#f9fafb'}
+                  onMouseOut={(e) => e.target.style.backgroundColor = 'white'}
+                >
+                  <span>✏️</span> Редактирай
+                </div>
+                
+                <div 
+                  style={{
+                    padding: '0.75rem 1rem',
+                    fontSize: '0.875rem',
+                    cursor: 'pointer',
+                    borderBottom: '1px solid #f3f4f6',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem'
+                  }}
+                  onClick={async () => { 
+                    if (onViewingIncrement) await onViewingIncrement(property.id); 
+                    setShowActions(false); 
+                  }}
+                  onMouseOver={(e) => e.target.style.backgroundColor = '#f9fafb'}
+                  onMouseOut={(e) => e.target.style.backgroundColor = 'white'}
+                >
+                  <span>👁️</span> Отбележи преглед
+                </div>
+                
+                {!property.seller && (
+                  <div 
+                    style={{
+                      padding: '0.75rem 1rem',
+                      fontSize: '0.875rem',
+                      cursor: 'pointer',
+                      borderBottom: '1px solid #f3f4f6',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem'
+                    }}
+                    onClick={() => { setShowSellerModal(true); setShowActions(false); }}
+                    onMouseOver={(e) => e.target.style.backgroundColor = '#f9fafb'}
+                    onMouseOut={(e) => e.target.style.backgroundColor = 'white'}
+                  >
+                    <span>🏪</span> Добави продавач
+                  </div>
+                )}
+                
+                {(property.status === 'available' || property.status === 'rented') && (
+                  <div 
+                    style={{
+                      padding: '0.75rem 1rem',
+                      fontSize: '0.875rem',
+                      cursor: 'pointer',
+                      borderBottom: '1px solid #f3f4f6',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem'
+                    }}
+                    onClick={() => { setShowBuyerModal(true); setShowActions(false); }}
+                    onMouseOver={(e) => e.target.style.backgroundColor = '#f9fafb'}
+                    onMouseOut={(e) => e.target.style.backgroundColor = 'white'}
+                  >
+                    <span>👤</span> {property.propertyType === 'sale' ? 'Добави купувач' : 'Добави наемател'}
+                  </div>
+                )}
+                
+                {property.status !== 'archived' ? (
+                  <div 
+                    style={{
+                      padding: '0.75rem 1rem',
+                      fontSize: '0.875rem',
+                      cursor: 'pointer',
+                      borderBottom: '1px solid #f3f4f6',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem'
+                    }}
+                    onClick={() => { if (onArchive) onArchive(property.id); setShowActions(false); }}
+                    onMouseOver={(e) => e.target.style.backgroundColor = '#f9fafb'}
+                    onMouseOut={(e) => e.target.style.backgroundColor = 'white'}
+                  >
+                    <span>📦</span> Архивирай
+                  </div>
+                ) : (
+                  <div 
+                    style={{
+                      padding: '0.75rem 1rem',
+                      fontSize: '0.875rem',
+                      cursor: 'pointer',
+                      borderBottom: '1px solid #f3f4f6',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem'
+                    }}
+                    onClick={() => { if (onUnarchive) onUnarchive(property.id); setShowActions(false); }}
+                    onMouseOver={(e) => e.target.style.backgroundColor = '#f9fafb'}
+                    onMouseOut={(e) => e.target.style.backgroundColor = 'white'}
+                  >
+                    <span>📤</span> Върни от архив
+                  </div>
+                )}
+                
+                <div 
+                  style={{
+                    padding: '0.75rem 1rem',
+                    fontSize: '0.875rem',
+                    cursor: 'pointer',
+                    color: '#dc2626',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem'
+                  }}
+                  onClick={() => { onDelete(property.id); setShowActions(false); }}
+                  onMouseOver={(e) => e.target.style.backgroundColor = '#fef2f2'}
+                  onMouseOut={(e) => e.target.style.backgroundColor = 'white'}
+                >
+                  <span>🗑️</span> Изтрий
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div style={styles.cardAddress}>
+          📍 {property.address}
+          {property.city && property.city !== property.address && `, ${property.city}`}
+        </div>
+        
+        <div style={styles.priceContainer}>
+          <div>
+            <div style={styles.price}>
+              {property.propertyType === 'sale' ? 
+                formatPrice(property.priceEur) :
+                `${formatPrice(property.monthlyRentEur)}/месец`
+              }
+            </div>
+            {property.propertyType === 'sale' && currency === 'EUR' && property.priceEur && (
+              <div style={styles.priceSecondary}>
+                ≈ {Math.round(parseFloat(property.priceEur) * EUR_TO_BGN_RATE).toLocaleString('bg-BG')} лв.
+              </div>
+            )}
+          </div>
+          
+          <div style={styles.details}>
+            <div>📐 {property.area} кв.м</div>
+            <div>🚪 {property.rooms} стаи</div>
+            {property.floor && <div>🏗️ {property.floor} етаж</div>}
+            {property.yearBuilt && <div>📅 {property.yearBuilt} г.</div>}
+          </div>
+        </div>
+
+        {(property.seller || property.assignedAgent || property.tenants?.length > 0) && (
+          <div style={styles.peopleSection}>
+            {property.seller && (
+              <div style={styles.personItem}>
+                <span>🏪 Продавач:</span>
+                <strong>{property.seller.firstName} {property.seller.lastName}</strong>
+              </div>
+            )}
+            
+            {property.assignedAgent && (
+              <div style={styles.personItem}>
+                <span>👨‍💼 Агент:</span>
+                <strong>{property.assignedAgent.firstName} {property.assignedAgent.lastName}</strong>
+              </div>
+            )}
+            
+            {property.tenants?.length > 0 && (
+              <div style={styles.personItem}>
+                <span>👤 Наемател:</span>
+                <strong>{property.tenants[0].firstName} {property.tenants[0].lastName}</strong>
+              </div>
+            )}
+          </div>
+        )}
+
+        <div style={styles.cardActions}>
+          <div style={{fontSize: '0.875rem', color: '#6b7280'}}>
+            👁️ {property.viewings || 0} прегледа
+            {property.lastViewing && (
+              <div>Последен: {new Date(property.lastViewing).toLocaleDateString('bg-BG')}</div>
+            )}
+          </div>
+          
+          <div style={{fontSize: '0.75rem', color: '#9ca3af'}}>
+            {property.createdAt && `Добавен: ${new Date(property.createdAt).toLocaleDateString('bg-BG')}`}
+          </div>
+        </div>
+      </div>
+
+      {/* Seller Assignment Modal */}
+      {showSellerModal && (
+        <div style={styles.modal}>
+          <div style={styles.modalContent}>
+            <div style={{...styles.modalHeader, background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)'}}>
+              <h3 style={styles.modalTitle}>🏪 Добави продавач към имот</h3>
+              <button 
+                onClick={() => setShowSellerModal(false)} 
+                style={styles.closeButton}
+              >
+                ×
+              </button>
+            </div>
+            <div style={styles.modalBody}>
+              <p>Избери продавач за "{property.title}":</p>
+              
+              <select
+                value={selectedSeller}
+                onChange={(e) => setSelectedSeller(e.target.value)}
+                style={styles.select}
+              >
+                <option value="">Изберете продавач...</option>
+                {sellers.map(seller => (
+                  <option key={seller.id} value={seller.id}>
+                    {seller.firstName} {seller.lastName} - {seller.phone}
+                  </option>
+                ))}
+              </select>
+              
+              <div style={styles.modalActions}>
+                <button
+                  onClick={() => setShowSellerModal(false)}
+                  style={styles.cancelButton}
+                >
+                  Отказ
+                </button>
+                <button
+                  onClick={handleAssignSeller}
+                  disabled={!selectedSeller}
+                  style={{
+                    ...styles.submitButton,
+                    backgroundColor: selectedSeller ? '#f59e0b' : '#d1d5db',
+                    cursor: selectedSeller ? 'pointer' : 'not-allowed'
+                  }}
+                >
+                  Присвой
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Buyer/Tenant Assignment Modal */}
+      {showBuyerModal && (
+        <div style={styles.modal}>
+          <div style={styles.modalContent}>
+            <div style={{...styles.modalHeader, background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)'}}>
+              <h3 style={styles.modalTitle}>
+                👤 {property.propertyType === 'sale' ? 'Продай имот' : 'Отдай под наем'}
+              </h3>
+              <button 
+                onClick={() => setShowBuyerModal(false)} 
+                style={styles.closeButton}
+              >
+                ×
+              </button>
+            </div>
+            <div style={styles.modalBody}>
+              <p>Избери {property.propertyType === 'sale' ? 'купувач' : 'наемател'} за "{property.title}":</p>
+              
+              {property.propertyType !== 'sale' && (
+                <div style={{marginBottom: '1rem'}}>
+                  <label style={{display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem'}}>
+                    <input
+                      type="radio"
+                      value="tenant"
+                      checked={assignmentType === 'tenant'}
+                      onChange={(e) => setAssignmentType(e.target.value)}
+                    />
+                    Наемател (отдаване под наем)
+                  </label>
+                  <label style={{display: 'flex', alignItems: 'center', gap: '0.5rem'}}>
+                    <input
+                      type="radio"
+                      value="buyer"
+                      checked={assignmentType === 'buyer'}
+                      onChange={(e) => setAssignmentType(e.target.value)}
+                    />
+                    Купувач (продажба)
+                  </label>
+                </div>
+              )}
+              
+              <select
+                value={selectedBuyer}
+                onChange={(e) => setSelectedBuyer(e.target.value)}
+                style={styles.select}
+              >
+                <option value="">Изберете {assignmentType === 'tenant' ? 'наемател' : 'купувач'}...</option>
+                {buyers.filter(buyer => buyer.status === 'active').map(buyer => (
+                  <option key={buyer.id} value={buyer.id}>
+                    {buyer.firstName} {buyer.lastName} - {buyer.phone}
+                    {buyer.budgetMax && ` (до ${formatPrice(buyer.budgetMax)})`}
+                  </option>
+                ))}
+              </select>
+              
+              <div style={styles.modalActions}>
+                <button
+                  onClick={() => setShowBuyerModal(false)}
+                  style={styles.cancelButton}
+                >
+                  Отказ
+                </button>
+                <button
+                  onClick={handleAssignBuyer}
+                  disabled={!selectedBuyer}
+                  style={{
+                    ...styles.submitButton,
+                    backgroundColor: selectedBuyer ? '#10b981' : '#d1d5db',
+                    cursor: selectedBuyer ? 'pointer' : 'not-allowed'
+                  }}
+                >
+                  {assignmentType === 'tenant' ? 'Отдай под наем' : 'Продай'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Click outside handler */}
+      {showActions && (
+        <div 
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 5
+          }}
+          onClick={() => setShowActions(false)}
+        />
+      )}
+    </div>
+  );
+};
+
+// Property Modal Component (keeping existing one)
 const PropertyModal = ({ show, onClose, onSave, property = null, isEdit = false }) => {
   const [formData, setFormData] = useState({
     title: '',
@@ -478,7 +972,6 @@ const PropertyModal = ({ show, onClose, onSave, property = null, isEdit = false 
         description: property.description || ''
       });
     } else if (show) {
-      // Reset form when opening new property modal
       setFormData({
         title: '',
         propertyType: 'sale',
@@ -503,7 +996,6 @@ const PropertyModal = ({ show, onClose, onSave, property = null, isEdit = false 
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    // Client-side validation
     if (!formData.title?.trim() || !formData.address?.trim() || !formData.area || !formData.rooms) {
       alert('Моля попълнете всички задължителни полета!');
       return;
@@ -659,66 +1151,6 @@ const PropertyModal = ({ show, onClose, onSave, property = null, isEdit = false 
                 />
               </div>
 
-              <div style={styles.formGroup}>
-                <label style={styles.label}>🏢 Общо етажи</label>
-                <input
-                  type="number"
-                  value={formData.totalFloors}
-                  onChange={(e) => setFormData({...formData, totalFloors: e.target.value})}
-                  style={styles.input}
-                  placeholder="6"
-                />
-              </div>
-
-              <div style={styles.formGroup}>
-                <label style={styles.label}>📅 Година на строеж</label>
-                <input
-                  type="number"
-                  value={formData.yearBuilt}
-                  onChange={(e) => setFormData({...formData, yearBuilt: e.target.value})}
-                  style={styles.input}
-                  min="1900"
-                  max={new Date().getFullYear()}
-                  placeholder="2010"
-                />
-              </div>
-
-              <div style={styles.formGroup}>
-                <label style={styles.label}>☀️ Изложение</label>
-                <select
-                  value={formData.exposure}
-                  onChange={(e) => setFormData({...formData, exposure: e.target.value})}
-                  style={styles.select}
-                >
-                  <option value="">Изберете</option>
-                  <option value="Север">Север</option>
-                  <option value="Юг">Юг</option>
-                  <option value="Изток">Изток</option>
-                  <option value="Запад">Запад</option>
-                  <option value="Югоизток">Югоизток</option>
-                  <option value="Югозапад">Югозапад</option>
-                  <option value="Североизток">Североизток</option>
-                  <option value="Северозапад">Северозапад</option>
-                </select>
-              </div>
-
-              <div style={styles.formGroup}>
-                <label style={styles.label}>🔥 Отопление</label>
-                <select
-                  value={formData.heating}
-                  onChange={(e) => setFormData({...formData, heating: e.target.value})}
-                  style={styles.select}
-                >
-                  <option value="">Изберете</option>
-                  <option value="Централно парно">Централно парно</option>
-                  <option value="Газово">Газово</option>
-                  <option value="Електрическо">Електрическо</option>
-                  <option value="Климатици">Климатици</option>
-                  <option value="Печка">Печка</option>
-                  <option value="Няма">Няма</option>
-                </select>
-              </div>
-
               {formData.propertyType === 'sale' && (
                 <div style={styles.formGroup}>
                   <label style={styles.label}>💰 Цена (EUR) *</label>
@@ -764,304 +1196,17 @@ const PropertyModal = ({ show, onClose, onSave, property = null, isEdit = false 
               />
             </div>
 
-            <div style={styles.formGroup}>
-              <label style={styles.label}>📝 Описание</label>
-              <textarea
-                value={formData.description}
-                onChange={(e) => setFormData({...formData, description: e.target.value})}
-                style={styles.textarea}
-                placeholder="Светъл тристаен апартамент с две тераси и паркомясто..."
-              />
-            </div>
-
             <div style={styles.modalActions}>
               <button 
                 type="button" 
                 onClick={onClose} 
                 style={styles.cancelButton}
-                onMouseOver={(e) => e.target.style.backgroundColor = '#f3f4f6'}
-                onMouseOut={(e) => e.target.style.backgroundColor = 'white'}
               >
                 Отказ
               </button>
               <button 
                 type="submit" 
                 style={styles.submitButton}
-                onMouseOver={(e) => e.target.style.backgroundColor = '#2563eb'}
-                onMouseOut={(e) => e.target.style.backgroundColor = '#3b82f6'}
-              >
-                {isEdit ? 'Обнови' : 'Създай'}
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// Buyer Modal Component
-const BuyerModal = ({ show, onClose, onSave, buyer = null, isEdit = false }) => {
-  const [formData, setFormData] = useState({
-    firstName: '',
-    lastName: '',
-    phone: '',
-    email: '',
-    budgetMin: '',
-    budgetMax: '',
-    preferredPropertyType: 'any',
-    preferredAreas: '',
-    preferredRooms: '',
-    notes: '',
-    status: 'potential'
-  });
-
-  useEffect(() => {
-    if (buyer && isEdit) {
-      setFormData({
-        firstName: buyer.firstName || '',
-        lastName: buyer.lastName || '',
-        phone: buyer.phone || '',
-        email: buyer.email || '',
-        budgetMin: buyer.budgetMin || '',
-        budgetMax: buyer.budgetMax || '',
-        preferredPropertyType: buyer.preferredPropertyType || 'any',
-        preferredAreas: Array.isArray(buyer.preferredAreas) ? buyer.preferredAreas.join(', ') : (buyer.preferredAreas || ''),
-        preferredRooms: buyer.preferredRooms?.toString() || '',
-        notes: buyer.notes || '',
-        status: buyer.status || 'potential'
-      });
-    } else if (show) {
-      // Reset form when opening new buyer modal
-      setFormData({
-        firstName: '',
-        lastName: '',
-        phone: '',
-        email: '',
-        budgetMin: '',
-        budgetMax: '',
-        preferredPropertyType: 'any',
-        preferredAreas: '',
-        preferredRooms: '',
-        notes: '',
-        status: 'potential'
-      });
-    }
-  }, [buyer, isEdit, show]);
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    
-    // Client-side validation
-    if (!formData.firstName?.trim() || !formData.lastName?.trim() || !formData.phone?.trim()) {
-      alert('Моля попълнете всички задължителни полета!');
-      return;
-    }
-
-    // Email validation
-    if (formData.email && !formData.email.includes('@')) {
-      alert('Моля въведете валиден имейл адрес!');
-      return;
-    }
-
-    // Budget validation
-    if (formData.budgetMin && formData.budgetMax && 
-        parseFloat(formData.budgetMin) > parseFloat(formData.budgetMax)) {
-      alert('Минималният бюджет не може да бъде по-голям от максималния!');
-      return;
-    }
-
-    try {
-      const dataToSend = {
-        ...formData,
-        firstName: formData.firstName.trim(),
-        lastName: formData.lastName.trim(),
-        phone: formData.phone.trim(),
-        email: formData.email?.trim() || null,
-        preferredAreas: formData.preferredAreas ? 
-          formData.preferredAreas.split(',').map(area => area.trim()).filter(area => area) : [],
-        preferredRooms: formData.preferredRooms ? parseInt(formData.preferredRooms) : null,
-        budgetMin: formData.budgetMin ? parseFloat(formData.budgetMin) : null,
-        budgetMax: formData.budgetMax ? parseFloat(formData.budgetMax) : null
-      };
-
-      await onSave(dataToSend);
-    } catch (error) {
-      alert('Грешка при запазване: ' + (error.message || 'Неочаквана грешка'));
-    }
-  };
-
-  if (!show) return null;
-
-  return (
-    <div style={styles.modal}>
-      <div style={styles.modalContent}>
-        <div style={{...styles.modalHeader, background: 'linear-gradient(135deg, #10b981 0%, #3b82f6 100%)'}}>
-          <h2 style={styles.modalTitle}>
-            {isEdit ? '✏️ Редактирай купувач' : '👤 Добави нов купувач'}
-          </h2>
-          <button 
-            onClick={onClose} 
-            style={styles.closeButton}
-            onMouseOver={(e) => e.target.style.backgroundColor = 'rgba(255,255,255,0.2)'}
-            onMouseOut={(e) => e.target.style.backgroundColor = 'transparent'}
-          >
-            ×
-          </button>
-        </div>
-
-        <div style={styles.modalBody}>
-          <form onSubmit={handleSubmit} style={styles.form}>
-            <div style={styles.formGrid}>
-              <div style={styles.formGroup}>
-                <label style={styles.label}>👤 Име *</label>
-                <input
-                  type="text"
-                  value={formData.firstName}
-                  onChange={(e) => setFormData({...formData, firstName: e.target.value})}
-                  style={styles.input}
-                  placeholder="Мария"
-                  required
-                />
-              </div>
-
-              <div style={styles.formGroup}>
-                <label style={styles.label}>👤 Фамилия *</label>
-                <input
-                  type="text"
-                  value={formData.lastName}
-                  onChange={(e) => setFormData({...formData, lastName: e.target.value})}
-                  style={styles.input}
-                  placeholder="Стоянова"
-                  required
-                />
-              </div>
-
-              <div style={styles.formGroup}>
-                <label style={styles.label}>📞 Телефон *</label>
-                <input
-                  type="tel"
-                  value={formData.phone}
-                  onChange={(e) => setFormData({...formData, phone: e.target.value})}
-                  style={styles.input}
-                  placeholder="+359 889 444 555"
-                  required
-                />
-              </div>
-
-              <div style={styles.formGroup}>
-                <label style={styles.label}>✉️ Email</label>
-                <input
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => setFormData({...formData, email: e.target.value})}
-                  style={styles.input}
-                  placeholder="maria@gmail.com"
-                />
-              </div>
-
-              <div style={styles.formGroup}>
-                <label style={styles.label}>💰 Минимален бюджет (EUR)</label>
-                <input
-                  type="number"
-                  value={formData.budgetMin}
-                  onChange={(e) => setFormData({...formData, budgetMin: e.target.value})}
-                  style={styles.input}
-                  min="0"
-                  step="0.01"
-                  placeholder="100000"
-                />
-              </div>
-
-              <div style={styles.formGroup}>
-                <label style={styles.label}>💰 Максимален бюджет (EUR)</label>
-                <input
-                  type="number"
-                  value={formData.budgetMax}
-                  onChange={(e) => setFormData({...formData, budgetMax: e.target.value})}
-                  style={styles.input}
-                  min="0"
-                  step="0.01"
-                  placeholder="200000"
-                />
-              </div>
-
-              <div style={styles.formGroup}>
-                <label style={styles.label}>🏠 Предпочитан тип имот</label>
-                <select
-                  value={formData.preferredPropertyType}
-                  onChange={(e) => setFormData({...formData, preferredPropertyType: e.target.value})}
-                  style={styles.select}
-                >
-                  <option value="any">Всички</option>
-                  <option value="sale">Продажба</option>
-                  <option value="rent">Наем</option>
-                </select>
-              </div>
-
-              <div style={styles.formGroup}>
-                <label style={styles.label}>🚪 Предпочитан брой стаи</label>
-                <input
-                  type="number"
-                  value={formData.preferredRooms}
-                  onChange={(e) => setFormData({...formData, preferredRooms: e.target.value})}
-                  style={styles.input}
-                  min="1"
-                  placeholder="3"
-                />
-              </div>
-
-              <div style={styles.formGroup}>
-                <label style={styles.label}>📊 Статус</label>
-                <select
-                  value={formData.status}
-                  onChange={(e) => setFormData({...formData, status: e.target.value})}
-                  style={styles.select}
-                >
-                  <option value="potential">Потенциален</option>
-                  <option value="active">Активен</option>
-                  <option value="inactive">Неактивен</option>
-                  <option value="converted">Клиент</option>
-                </select>
-              </div>
-
-              <div style={{...styles.formGroup, gridColumn: 'span 2'}}>
-                <label style={styles.label}>📍 Предпочитани райони (разделени със запетая)</label>
-                <input
-                  type="text"
-                  value={formData.preferredAreas}
-                  onChange={(e) => setFormData({...formData, preferredAreas: e.target.value})}
-                  style={styles.input}
-                  placeholder="Лозенец, Център, Витоша"
-                />
-              </div>
-
-              <div style={{...styles.formGroup, gridColumn: 'span 2'}}>
-                <label style={styles.label}>📝 Бележки</label>
-                <textarea
-                  value={formData.notes}
-                  onChange={(e) => setFormData({...formData, notes: e.target.value})}
-                  style={styles.textarea}
-                  placeholder="Допълнителна информация за купувача..."
-                />
-              </div>
-            </div>
-
-            <div style={styles.modalActions}>
-              <button 
-                type="button" 
-                onClick={onClose} 
-                style={styles.cancelButton}
-                onMouseOver={(e) => e.target.style.backgroundColor = '#f3f4f6'}
-                onMouseOut={(e) => e.target.style.backgroundColor = 'white'}
-              >
-                Отказ
-              </button>
-              <button 
-                type="submit" 
-                style={styles.submitButton}
-                onMouseOver={(e) => e.target.style.backgroundColor = '#059669'}
-                onMouseOut={(e) => e.target.style.backgroundColor = '#10b981'}
               >
                 {isEdit ? 'Обнови' : 'Създай'}
               </button>
@@ -1085,12 +1230,12 @@ const App = () => {
   // Data state
   const [properties, setProperties] = useState([]);
   const [buyers, setBuyers] = useState([]);
+  const [sellers, setSellers] = useState([]);
+  const [tasks, setTasks] = useState([]);
 
   // Modal states
   const [showPropertyModal, setShowPropertyModal] = useState(false);
-  const [showBuyerModal, setShowBuyerModal] = useState(false);
   const [editingProperty, setEditingProperty] = useState(null);
-  const [editingBuyer, setEditingBuyer] = useState(null);
 
   // Load data on mount
   useEffect(() => {
@@ -1100,7 +1245,7 @@ const App = () => {
   const loadInitialData = async () => {
     setLoading(true);
     try {
-      await Promise.all([loadProperties(), loadBuyers()]);
+      await Promise.all([loadProperties(), loadBuyers(), loadSellers(), loadTasks()]);
     } catch (error) {
       setError('Грешка при зареждане на данните');
       console.error('Error loading initial data:', error);
@@ -1125,7 +1270,24 @@ const App = () => {
       setBuyers(Array.isArray(response) ? response : (response.buyers || []));
     } catch (error) {
       console.error('Error loading buyers:', error);
-      throw error;
+    }
+  };
+
+  const loadSellers = async () => {
+    try {
+      const response = await sellersAPI.getAll();
+      setSellers(Array.isArray(response) ? response : (response.sellers || []));
+    } catch (error) {
+      console.error('Error loading sellers:', error);
+    }
+  };
+
+  const loadTasks = async () => {
+    try {
+      const response = await tasksAPI.getAll();
+      setTasks(Array.isArray(response) ? response : (response.tasks || []));
+    } catch (error) {
+      console.error('Error loading tasks:', error);
     }
   };
 
@@ -1186,60 +1348,68 @@ const App = () => {
     }
   };
 
-  // Buyer CRUD operations
-  const handleAddBuyer = async (buyerData) => {
+  const handleArchiveProperty = async (id) => {
     try {
       setLoading(true);
-      const newBuyer = await buyersAPI.create(buyerData);
-      setBuyers(prev => [...prev, newBuyer]);
-      setShowBuyerModal(false);
-      setEditingBuyer(null);
+      const updatedProperty = await propertiesAPI.archive(id);
+      setProperties(prev => prev.map(p => p.id === id ? updatedProperty : p));
       setError(null);
     } catch (error) {
-      setError('Неуспешно добавяне на купувач: ' + (error.message || 'Неочаквана грешка'));
-      console.error('Error adding buyer:', error);
-      throw error;
+      setError('Неуспешно архивиране на имот: ' + (error.message || 'Неочаквана грешка'));
+      console.error('Error archiving property:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleEditBuyer = async (buyerData) => {
-    if (!editingBuyer?.id) {
-      throw new Error('Невалиден купувач за редактиране');
-    }
-
+  const handleUnarchiveProperty = async (id) => {
     try {
       setLoading(true);
-      const updatedBuyer = await buyersAPI.update(editingBuyer.id, buyerData);
-      setBuyers(prev => prev.map(b => b.id === editingBuyer.id ? updatedBuyer : b));
-      setShowBuyerModal(false);
-      setEditingBuyer(null);
+      const updatedProperty = await propertiesAPI.unarchive(id);
+      setProperties(prev => prev.map(p => p.id === id ? updatedProperty : p));
       setError(null);
     } catch (error) {
-      setError('Неуспешно обновяване на купувач: ' + (error.message || 'Неочаквана грешка'));
-      console.error('Error updating buyer:', error);
-      throw error;
+      setError('Неуспешно възстановяване на имот: ' + (error.message || 'Неочаквана грешка'));
+      console.error('Error unarchiving property:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDeleteBuyer = async (id) => {
-    if (!window.confirm('Сигурни ли сте, че искате да изтриете този купувач?')) {
-      return;
-    }
-
+  const handleAssignSeller = async (propertyId, sellerId) => {
     try {
       setLoading(true);
-      await buyersAPI.delete(id);
-      setBuyers(prev => prev.filter(b => b.id !== id));
+      const updatedProperty = await propertiesAPI.assignSeller(propertyId, sellerId);
+      setProperties(prev => prev.map(p => p.id === propertyId ? updatedProperty : p));
       setError(null);
     } catch (error) {
-      setError('Неуспешно изтриване на купувач: ' + (error.message || 'Неочаквана грешка'));
-      console.error('Error deleting buyer:', error);
+      setError('Неуспешно присвояване на продавач: ' + (error.message || 'Неочаквана грешка'));
+      console.error('Error assigning seller:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleAssignBuyer = async (propertyId, buyerId, type) => {
+    try {
+      setLoading(true);
+      const updatedProperty = await propertiesAPI.assignBuyer(propertyId, buyerId, type);
+      setProperties(prev => prev.map(p => p.id === propertyId ? updatedProperty : p));
+      setError(null);
+    } catch (error) {
+      setError('Неуспешно присвояване на купувач: ' + (error.message || 'Неочаквана грешка'));
+      console.error('Error assigning buyer:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleViewingIncrement = async (propertyId) => {
+    try {
+      const updatedProperty = await propertiesAPI.incrementViewings(propertyId);
+      setProperties(prev => prev.map(p => p.id === propertyId ? updatedProperty : p));
+    } catch (error) {
+      console.error('Error incrementing viewings:', error);
     }
   };
 
@@ -1260,61 +1430,14 @@ const App = () => {
     return properties.filter(property => property.propertyType === propertyFilter);
   };
 
-  const getStatusBadgeStyle = (status) => {
-    const baseStyle = {...styles.statusBadge};
-    switch(status?.toLowerCase()) {
-      case 'available':
-        return {...baseStyle, backgroundColor: '#10b981'};
-      case 'rented':
-        return {...baseStyle, backgroundColor: '#f59e0b'};
-      case 'managed':
-        return {...baseStyle, backgroundColor: '#3b82f6'};
-      case 'sold':
-        return {...baseStyle, backgroundColor: '#6b7280'};
-      default:
-        return {...baseStyle, backgroundColor: '#6b7280'};
-    }
-  };
-
-  const getBuyerStatusBadge = (status) => {
-    const statusConfig = {
-      active: { color: '#10b981', label: 'Активен' },
-      potential: { color: '#f59e0b', label: 'Потенциален' },
-      converted: { color: '#3b82f6', label: 'Клиент' },
-      inactive: { color: '#6b7280', label: 'Неактивен' }
-    };
-
-    const config = statusConfig[status] || statusConfig.inactive;
-    
-    return {
-      backgroundColor: config.color,
-      color: 'white',
-      padding: '0.25rem 0.75rem',
-      borderRadius: '9999px',
-      fontSize: '0.75rem',
-      fontWeight: '600',
-      display: 'inline-block'
-    };
-  };
-
   const openEditPropertyModal = (property) => {
     setEditingProperty(property);
     setShowPropertyModal(true);
   };
 
-  const openEditBuyerModal = (buyer) => {
-    setEditingBuyer(buyer);
-    setShowBuyerModal(true);
-  };
-
   const closePropertyModal = () => {
     setShowPropertyModal(false);
     setEditingProperty(null);
-  };
-
-  const closeBuyerModal = () => {
-    setShowBuyerModal(false);
-    setEditingBuyer(null);
   };
 
   return (
@@ -1446,85 +1569,21 @@ const App = () => {
             {/* Properties Grid */}
             <div style={styles.grid}>
               {getFilteredProperties().map((property) => (
-                <div 
-                  key={property.id} 
-                  style={styles.card}
-                  onMouseOver={(e) => {
-                    e.currentTarget.style.transform = 'translateY(-4px)';
-                    e.currentTarget.style.boxShadow = '0 10px 25px rgba(0,0,0,0.15)';
-                  }}
-                  onMouseOut={(e) => {
-                    e.currentTarget.style.transform = 'translateY(0)';
-                    e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.1)';
-                  }}
-                >
-                  <div style={styles.cardImage}>
-                    <div style={styles.cardImageIcon}>🏠</div>
-                    <div style={getStatusBadgeStyle(property.status)}>
-                      {property.status === 'available' ? '✅ Свободен' :
-                       property.status === 'rented' ? '🔶 Отдаден' :
-                       property.status === 'managed' ? '🔷 Управляван' :
-                       property.status === 'sold' ? '✅ Продаден' :
-                       '❓ Неопределен'}
-                    </div>
-                  </div>
-
-                  <div style={styles.cardContent}>
-                    <h3 style={styles.cardTitle}>{property.title}</h3>
-                    <div style={styles.cardAddress}>📍 {property.address}</div>
-                    
-                    <div style={styles.priceContainer}>
-                      <div>
-                        <div style={styles.price}>
-                          {property.propertyType === 'sale' ? 
-                            formatPrice(property.priceEur) :
-                            `${formatPrice(property.monthlyRentEur)}/месец`
-                          }
-                        </div>
-                        {property.propertyType === 'sale' && currency === 'EUR' && property.priceEur && (
-                          <div style={styles.priceSecondary}>
-                            ≈ {Math.round(parseFloat(property.priceEur) * EUR_TO_BGN_RATE).toLocaleString('bg-BG')} лв.
-                          </div>
-                        )}
-                      </div>
-                      <div style={styles.details}>
-                        <div>📐 {property.area} кв.м</div>
-                        <div>🚪 {property.rooms} стаи</div>
-                        {property.floor && <div>🏗️ {property.floor} етаж</div>}
-                      </div>
-                    </div>
-
-                    {property.tenants && property.tenants.length > 0 && (
-                      <div style={styles.tenantInfo}>
-                        👤 Наемател: {property.tenants[0].firstName} {property.tenants[0].lastName}
-                      </div>
-                    )}
-
-                    <div style={styles.cardActions}>
-                      <div style={{fontSize: '0.875rem', color: '#6b7280'}}>
-                        👁️ {property.viewings || 0} прегледа
-                      </div>
-                      <div style={{display: 'flex', gap: '0.5rem'}}>
-                        <button
-                          onClick={() => openEditPropertyModal(property)}
-                          style={{...styles.actionButton, ...styles.editButton}}
-                          onMouseOver={(e) => e.target.style.backgroundColor = '#2563eb'}
-                          onMouseOut={(e) => e.target.style.backgroundColor = '#3b82f6'}
-                        >
-                          ✏️ Редактирай
-                        </button>
-                        <button
-                          onClick={() => handleDeleteProperty(property.id)}
-                          style={{...styles.actionButton, ...styles.deleteButton}}
-                          onMouseOver={(e) => e.target.style.backgroundColor = '#dc2626'}
-                          onMouseOut={(e) => e.target.style.backgroundColor = '#ef4444'}
-                        >
-                          🗑️ Изтрий
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                <EnhancedPropertyCard
+                  key={property.id}
+                  property={property}
+                  currency={currency}
+                  formatPrice={formatPrice}
+                  onEdit={openEditPropertyModal}
+                  onDelete={handleDeleteProperty}
+                  onArchive={handleArchiveProperty}
+                  onUnarchive={handleUnarchiveProperty}
+                  onAssignSeller={handleAssignSeller}
+                  onAssignBuyer={handleAssignBuyer}
+                  onViewingIncrement={handleViewingIncrement}
+                  buyers={buyers}
+                  sellers={sellers}
+                />
               ))}
             </div>
 
@@ -1538,125 +1597,39 @@ const App = () => {
           </div>
         )}
 
-        {/* Buyers Section */}
+        {/* Other sections placeholders */}
         {currentPage === 'buyers' && (
-          <div>
-            <div style={styles.sectionHeader}>
-              <h2 style={styles.sectionTitle}>👥 Купувачи</h2>
-              <button
-                onClick={() => {
-                  setEditingBuyer(null);
-                  setShowBuyerModal(true);
-                }}
-                style={{...styles.addButton, backgroundColor: '#10b981'}}
-                onMouseOver={(e) => e.target.style.backgroundColor = '#059669'}
-                onMouseOut={(e) => e.target.style.backgroundColor = '#10b981'}
-              >
-                + Добави купувач
-              </button>
-            </div>
-            
-            <div style={styles.grid}>
-              {buyers.map((buyer) => (
-                <div key={buyer.id} style={styles.card}>
-                  <div style={styles.cardContent}>
-                    <div style={{display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem'}}>
-                      <div style={styles.buyerAvatar}>
-                        {buyer.firstName?.[0]?.toUpperCase() || '?'}{buyer.lastName?.[0]?.toUpperCase() || '?'}
-                      </div>
-                      <div>
-                        <h3 style={styles.cardTitle}>{buyer.firstName} {buyer.lastName}</h3>
-                        <span style={getBuyerStatusBadge(buyer.status)}>
-                          {buyer.status === 'active' ? 'Активен' :
-                           buyer.status === 'potential' ? 'Потенциален' :
-                           buyer.status === 'converted' ? 'Клиент' :
-                           'Неактивен'}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div style={{marginBottom: '1rem'}}>
-                      <div style={{marginBottom: '0.5rem'}}>📞 {buyer.phone}</div>
-                      {buyer.email && <div style={{marginBottom: '0.5rem'}}>✉️ {buyer.email}</div>}
-                      {(buyer.budgetMin || buyer.budgetMax) && (
-                        <div>💰 Бюджет: {buyer.budgetMin ? formatPrice(buyer.budgetMin) : '0'} - {buyer.budgetMax ? formatPrice(buyer.budgetMax) : '∞'}</div>
-                      )}
-                      {buyer.preferredAreas && buyer.preferredAreas.length > 0 && (
-                        <div style={{marginTop: '0.5rem'}}>📍 Райони: {Array.isArray(buyer.preferredAreas) ? buyer.preferredAreas.join(', ') : buyer.preferredAreas}</div>
-                      )}
-                    </div>
-                    
-                    <div style={styles.cardActions}>
-                      <div style={{fontSize: '0.875rem', color: '#6b7280'}}>
-                        📅 Контакт: {buyer.lastContact ? new Date(buyer.lastContact).toLocaleDateString('bg-BG') : 'Няма'}
-                      </div>
-                      <div style={{display: 'flex', gap: '0.5rem'}}>
-                        <button
-                          onClick={() => openEditBuyerModal(buyer)}
-                          style={{...styles.actionButton, backgroundColor: '#10b981', color: 'white'}}
-                          onMouseOver={(e) => e.target.style.backgroundColor = '#059669'}
-                          onMouseOut={(e) => e.target.style.backgroundColor = '#10b981'}
-                        >
-                          ✏️
-                        </button>
-                        <button
-                          onClick={() => handleDeleteBuyer(buyer.id)}
-                          style={{...styles.actionButton, ...styles.deleteButton}}
-                          onMouseOver={(e) => e.target.style.backgroundColor = '#dc2626'}
-                          onMouseOut={(e) => e.target.style.backgroundColor = '#ef4444'}
-                        >
-                          🗑️
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {buyers.length === 0 && (
-              <div style={styles.emptyState}>
-                <div style={styles.emptyIcon}>👥</div>
-                <div style={styles.emptyTitle}>Няма купувачи за показване</div>
-                <div>Добавете първия си купувач, за да започнете</div>
-              </div>
-            )}
+          <div style={styles.emptyState}>
+            <div style={styles.emptyIcon}>👥</div>
+            <div style={styles.emptyTitle}>Купувачи</div>
+            <div>Функционалност за купувачи ще бъде добавена скоро...</div>
           </div>
         )}
 
-        {/* Other sections placeholders */}
         {currentPage === 'sellers' && (
           <div style={styles.emptyState}>
             <div style={styles.emptyIcon}>🏪</div>
-            <div style={styles.emptyTitle}>Продавачи</div>
-            <div>Тази секция ще бъде добавена скоро...</div>
+            <div style={styles.emptyTitle}>Продавачи ({sellers.length})</div>
+            <div>Функционалност за продавачи ще бъде добавена скоро...</div>
           </div>
         )}
 
         {currentPage === 'tasks' && (
           <div style={styles.emptyState}>
             <div style={styles.emptyIcon}>📅</div>
-            <div style={styles.emptyTitle}>Задачи</div>
-            <div>Тази секция ще бъде добавена скоро...</div>
+            <div style={styles.emptyTitle}>Задачи ({tasks.length})</div>
+            <div>Функционалност за задачи ще бъде добавена скоро...</div>
           </div>
         )}
       </main>
 
-      {/* Modals */}
+      {/* Property Modal */}
       <PropertyModal
         show={showPropertyModal}
         onClose={closePropertyModal}
         onSave={editingProperty ? handleEditProperty : handleAddProperty}
         property={editingProperty}
         isEdit={!!editingProperty}
-      />
-
-      <BuyerModal
-        show={showBuyerModal}
-        onClose={closeBuyerModal}
-        onSave={editingBuyer ? handleEditBuyer : handleAddBuyer}
-        buyer={editingBuyer}
-        isEdit={!!editingBuyer}
       />
     </div>
   );

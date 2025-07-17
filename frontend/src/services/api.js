@@ -1,4 +1,4 @@
-// frontend/src/services/api.js
+// frontend/src/services/api.js - CLEAN VERSION WITHOUT DUPLICATIONS
 const API_BASE_URL = 'https://real-estate-crm-api-cwlr.onrender.com/api';
 
 // Helper function to clean data before sending
@@ -80,7 +80,7 @@ const apiCall = async (url, options = {}, retries = 3) => {
   }
 };
 
-// Properties API
+// Properties API - COMPLETE WITH ALL FUNCTIONS
 export const propertiesAPI = {
   // Get all properties
   getAll: async (filters = {}) => {
@@ -141,6 +141,37 @@ export const propertiesAPI = {
     });
   },
 
+  // Archive property
+  archive: async (id) => {
+    return apiCall(`/properties/${id}/archive`, { method: 'PUT' });
+  },
+
+  // Unarchive property
+  unarchive: async (id) => {
+    return apiCall(`/properties/${id}/unarchive`, { method: 'PUT' });
+  },
+
+  // Assign seller to property
+  assignSeller: async (id, sellerId) => {
+    return apiCall(`/properties/${id}/assign-seller`, {
+      method: 'PUT',
+      body: JSON.stringify({ sellerId })
+    });
+  },
+
+  // Assign buyer to property
+  assignBuyer: async (id, buyerId, type = 'buyer') => {
+    return apiCall(`/properties/${id}/assign-buyer`, {
+      method: 'PUT',
+      body: JSON.stringify({ buyerId, type })
+    });
+  },
+
+  // Increment property viewings
+  incrementViewings: async (id) => {
+    return apiCall(`/properties/${id}/viewings`, { method: 'PUT' });
+  },
+
   // Search properties
   search: async (query, filters = {}) => {
     const searchParams = { 
@@ -152,7 +183,7 @@ export const propertiesAPI = {
   }
 };
 
-// Buyers API
+// Buyers API - COMPLETE
 export const buyersAPI = {
   // Get all buyers
   getAll: async (filters = {}) => {
@@ -234,113 +265,7 @@ export const buyersAPI = {
   }
 };
 
-// Sellers API
-export const sellersAPI = {
-  getAll: async () => apiCall('/sellers'),
-  getById: async (id) => apiCall(`/sellers/${id}`),
-  create: async (sellerData) => {
-    const cleanedData = cleanData(sellerData);
-    return apiCall('/sellers', {
-      method: 'POST',
-      body: JSON.stringify(cleanedData)
-    });
-  },
-  update: async (id, sellerData) => {
-    const cleanedData = cleanData(sellerData);
-    return apiCall(`/sellers/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(cleanedData)
-    });
-  },
-  delete: async (id) => apiCall(`/sellers/${id}`, { method: 'DELETE' })
-};
-
-// Tasks API
-export const tasksAPI = {
-  getAll: async () => apiCall('/tasks'),
-  getById: async (id) => apiCall(`/tasks/${id}`),
-  create: async (taskData) => {
-    const cleanedData = cleanData(taskData);
-    return apiCall('/tasks', {
-      method: 'POST',
-      body: JSON.stringify(cleanedData)
-    });
-  },
-  update: async (id, taskData) => {
-    const cleanedData = cleanData(taskData);
-    return apiCall(`/tasks/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(cleanedData)
-    });
-  },
-  delete: async (id) => apiCall(`/tasks/${id}`, { method: 'DELETE' })
-};
-
-// Analytics API
-export const analyticsAPI = {
-  getDashboard: async (refresh = false) => {
-    const url = `/analytics/dashboard${refresh ? '?refresh=true' : ''}`;
-    return apiCall(url);
-  },
-  getKPIs: async () => apiCall('/analytics/kpis'),
-  getPropertyAnalytics: async (filters = {}) => {
-    const queryParams = new URLSearchParams(cleanData(filters)).toString();
-    return apiCall(`/analytics/properties${queryParams ? `?${queryParams}` : ''}`);
-  },
-  getPerformance: async (filters = {}) => {
-    const queryParams = new URLSearchParams(cleanData(filters)).toString();
-    return apiCall(`/analytics/performance${queryParams ? `?${queryParams}` : ''}`);
-  },
-  getTrends: async (filters = {}) => {
-    const queryParams = new URLSearchParams(cleanData(filters)).toString();
-    return apiCall(`/analytics/trends${queryParams ? `?${queryParams}` : ''}`);
-  },
-  getRevenue: async (period = '12') => {
-    return apiCall(`/analytics/revenue?period=${period}`);
-  }
-};
-
-// Search API
-export const searchAPI = {
-  properties: async (query, filters = {}) => {
-    return propertiesAPI.search(query, filters);
-  },
-  buyers: async (query, filters = {}) => {
-    return buyersAPI.search(query, filters);
-  },
-  global: async (query) => {
-    return apiCall(`/search/global?q=${encodeURIComponent(query)}`);
-  }
-};
-
-// Properties API Extensions
-propertiesAPI.archive = async (id) => {
-  return apiCall(`/properties/${id}/archive`, { method: 'PUT' });
-};
-
-propertiesAPI.unarchive = async (id) => {
-  return apiCall(`/properties/${id}/unarchive`, { method: 'PUT' });
-};
-
-propertiesAPI.assignSeller = async (id, sellerId) => {
-  return apiCall(`/properties/${id}/assign-seller`, {
-    method: 'PUT',
-    body: JSON.stringify({ sellerId })
-  });
-};
-
-propertiesAPI.assignBuyer = async (id, buyerId, type = 'buyer') => {
-  return apiCall(`/properties/${id}/assign-buyer`, {
-    method: 'PUT',
-    body: JSON.stringify({ buyerId, type })
-  });
-};
-
-propertiesAPI.incrementViewings = async (id) => {
-  return apiCall(`/properties/${id}/viewings`, { method: 'PUT' });
-};
-
-// Complete Sellers API
+// Sellers API - COMPLETE
 export const sellersAPI = {
   // Get all sellers
   getAll: async (filters = {}) => {
@@ -418,7 +343,7 @@ export const sellersAPI = {
   }
 };
 
-// Complete Tasks API
+// Tasks API - COMPLETE
 export const tasksAPI = {
   // Get all tasks
   getAll: async (filters = {}) => {
@@ -492,6 +417,43 @@ export const tasksAPI = {
   getSummary: async (agentId = null) => {
     const params = agentId ? `?agentId=${agentId}` : '';
     return apiCall(`/tasks/summary/stats${params}`);
+  }
+};
+
+// Analytics API - COMPLETE
+export const analyticsAPI = {
+  getDashboard: async (refresh = false) => {
+    const url = `/analytics/dashboard${refresh ? '?refresh=true' : ''}`;
+    return apiCall(url);
+  },
+  getKPIs: async () => apiCall('/analytics/kpis'),
+  getPropertyAnalytics: async (filters = {}) => {
+    const queryParams = new URLSearchParams(cleanData(filters)).toString();
+    return apiCall(`/analytics/properties${queryParams ? `?${queryParams}` : ''}`);
+  },
+  getPerformance: async (filters = {}) => {
+    const queryParams = new URLSearchParams(cleanData(filters)).toString();
+    return apiCall(`/analytics/performance${queryParams ? `?${queryParams}` : ''}`);
+  },
+  getTrends: async (filters = {}) => {
+    const queryParams = new URLSearchParams(cleanData(filters)).toString();
+    return apiCall(`/analytics/trends${queryParams ? `?${queryParams}` : ''}`);
+  },
+  getRevenue: async (period = '12') => {
+    return apiCall(`/analytics/revenue?period=${period}`);
+  }
+};
+
+// Search API - COMPLETE
+export const searchAPI = {
+  properties: async (query, filters = {}) => {
+    return propertiesAPI.search(query, filters);
+  },
+  buyers: async (query, filters = {}) => {
+    return buyersAPI.search(query, filters);
+  },
+  global: async (query) => {
+    return apiCall(`/search/global?q=${encodeURIComponent(query)}`);
   }
 };
 
