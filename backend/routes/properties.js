@@ -1,4 +1,4 @@
-// backend/routes/properties.js - FINAL FIXED VERSION
+// backend/routes/properties.js - COMPLETE PROPERTIES ROUTES
 const express = require('express');
 const router = express.Router();
 const { PrismaClient } = require('@prisma/client');
@@ -88,7 +88,7 @@ const cleanPropertyData = (data) => {
 // GET /api/properties - Get all properties with full relationships
 router.get('/', async (req, res) => {
   try {
-    const { page = 1, limit = 50, propertyType, status, city, sellerId } = req.query;
+    const { page = 1, limit = 50, propertyType, status, city, sellerId, archived = 'false' } = req.query;
     const skip = (parseInt(page) - 1) * parseInt(limit);
     
     const where = {};
@@ -96,6 +96,13 @@ router.get('/', async (req, res) => {
     if (status && status !== 'all') where.status = status;
     if (city) where.city = { contains: city, mode: 'insensitive' };
     if (sellerId) where.sellerId = parseInt(sellerId);
+    
+    // Handle archived filter
+    if (archived === 'true') {
+      where.status = 'archived';
+    } else if (archived === 'false') {
+      where.status = { not: 'archived' };
+    }
     
     const [properties, total] = await Promise.all([
       prisma.property.findMany({

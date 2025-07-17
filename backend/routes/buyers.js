@@ -1,40 +1,90 @@
-// backend/routes/buyers.js - FIXED VERSION
+// backend/routes/buyers.js - COMPLETE BUYERS ROUTES
 const express = require('express');
 const router = express.Router();
 const { PrismaClient } = require('@prisma/client');
 
 const prisma = new PrismaClient();
 
-// GET /api/buyers - Get all buyers with filters
+// Helper function to clean buyer data
+const cleanBuyerData = (data) => {
+  const cleaned = {};
+  
+  // Required fields
+  if (data.firstName) cleaned.firstName = data.firstName.toString().trim();
+  if (data.lastName) cleaned.lastName = data.lastName.toString().trim();
+  if (data.phone) cleaned.phone = data.phone.toString().trim();
+  
+  // Optional fields
+  if (data.email && typeof data.email === 'string') {
+    cleaned.email = data.email.trim();
+  }
+  
+  // Budget fields
+  if (data.budgetMin !== undefined && data.budgetMin !== null && data.budgetMin !== '') {
+    const budget = parseFloat(data.budgetMin);
+    if (!isNaN(budget) && budget >= 0) cleaned.budgetMin = budget.toString();
+  }
+  
+  if (data.budgetMax !== undefined && data.budgetMax !== null && data.budgetMax !== '') {
+    const budget = parseFloat(data.budgetMax);
+    if (!isNaN(budget) && budget >= 0) cleaned.budgetMax = budget.toString();
+  }
+  
+  // Other fields
+  cleaned.status = data.status?.toString() || 'potential';
+  cleaned.preferredPropertyType = data.preferredPropertyType?.toString() || 'any';
+  
+  if (data.preferredRooms !== undefined && data.preferredRooms !== null && data.preferredRooms !== '') {
+    const rooms = parseInt(data.preferredRooms);
+    if (!isNaN(rooms) && rooms > 0) cleaned.preferredRooms = rooms;
+  }
+  
+  if (data.notes && typeof data.notes === 'string') {
+    cleaned.notes = data.notes.trim();
+  }
+  
+  // Handle preferredAreas array
+  if (data.preferredAreas) {
+    if (Array.isArray(data.preferredAreas)) {
+      cleaned.preferredAreas = data.preferredAreas.filter(area => area && area.trim());
+    } else if (typeof data.preferredAreas === 'string') {
+      cleaned.preferredAreas = data.preferredAreas.split(',').map(area => area.trim()).filter(area => area);
+    }
+  }
+  
+  // ID fields
+  if (data.assignedAgentId !== undefined && data.assignedAgentId !== null && data.assignedAgentId !== '') {
+    const id = parseInt(data.assignedAgentId);
+    if (!isNaN(id) && id > 0) cleaned.assignedAgentId = id;
+  }
+  
+  return cleaned;
+};
+
+// GET /api/buyers - Get all buyers
 router.get('/', async (req, res) => {
   try {
-    const { status, minBudget, maxBudget, city, page = 1, limit = 20 } = req.query;
+    const { page = 1, limit = 50, status, propertyType, agentId, minBudget, maxBudget } = req.query;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
     
     const where = {};
+    if (status && status !== 'all') where.status = status;
+    if (propertyType && propertyType !== 'all') where.preferredPropertyType = propertyType;
+    if (agentId) where.assignedAgentId = parseInt(agentId);
     
-    if (status && status !== 'all') {
-      where.status = status;
+    // Budget filters
+    if (minBudget) {
+      where.budgetMax = { gte: parseFloat(minBudget).toString() };
     }
-    
-    if (city) {
-      where.preferredAreas = { has: city };
+    if (maxBudget) {
+      where.budgetMin = { lte: parseFloat(maxBudget).toString() };
     }
-    
-    if (minBudget || maxBudget) {
-      where.AND = [];
-      if (minBudget) {
-        where.AND.push({ budgetMin: { gte: minBudget } });
-      }
-      if (maxBudget) {
-        where.AND.push({ budgetMax: { lte: maxBudget } });
-      }
-    }
-
-    const skip = (parseInt(page) - 1) * parseInt(limit);
     
     const [buyers, total] = await Promise.all([
       prisma.buyer.findMany({
         where,
+        skip,
+        take: parseInt(limit),
         include: {
           assignedAgent: {
             select: {
@@ -43,23 +93,34 @@ router.get('/', async (req, res) => {
               lastName: true,
               email: true
             }
+          },
+          viewedProperties: {
+            select: {
+              id: true,
+              title: true,
+              address: true,
+              propertyType: true,
+              priceEur: true,
+              monthlyRentEur: true
+            },
+            take: 5
           }
         },
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take: parseInt(limit)
+        orderBy: { createdAt: 'desc' }
       }),
       prisma.buyer.count({ where })
     ]);
 
-    const pagination = {
-      page: parseInt(page),
-      limit: parseInt(limit),
-      total,
-      pages: Math.ceil(total / parseInt(limit))
-    };
+    res.json({
+      buyers,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        pages: Math.ceil(total / parseInt(limit))
+      }
+    });
 
-    res.json({ buyers, pagination });
   } catch (error) {
     console.error('Error fetching buyers:', error);
     res.status(500).json({ 
@@ -69,24 +130,32 @@ router.get('/', async (req, res) => {
   }
 });
 
-// GET /api/buyers/:id - Get single buyer
+// GET /api/buyers/:id - Get buyer by ID
 router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    const buyerId = parseInt(id);
     
-    if (!id || isNaN(parseInt(id))) {
+    if (isNaN(buyerId)) {
       return res.status(400).json({ error: 'Invalid buyer ID' });
     }
-    
+
     const buyer = await prisma.buyer.findUnique({
-      where: { id: parseInt(id) },
+      where: { id: buyerId },
       include: {
-        assignedAgent: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true
+        assignedAgent: true,
+        viewedProperties: {
+          include: {
+            seller: {
+              select: { firstName: true, lastName: true }
+            }
+          }
+        },
+        tasks: {
+          include: {
+            assignedAgent: {
+              select: { firstName: true, lastName: true }
+            }
           }
         }
       }
@@ -97,6 +166,7 @@ router.get('/:id', async (req, res) => {
     }
 
     res.json(buyer);
+
   } catch (error) {
     console.error('Error fetching buyer:', error);
     res.status(500).json({ 
@@ -109,115 +179,56 @@ router.get('/:id', async (req, res) => {
 // POST /api/buyers - Create new buyer
 router.post('/', async (req, res) => {
   try {
-    const {
-      firstName,
-      lastName,
-      phone,
-      email,
-      budgetMin,
-      budgetMax,
-      preferredPropertyType,
-      preferredAreas,
-      preferredRooms,
-      notes,
-      status = 'potential',
-      assignedAgentId
-    } = req.body;
-
     console.log('Creating buyer with data:', req.body);
-
-    // Enhanced validation
-    const errors = [];
     
-    if (!firstName || firstName.trim().length === 0) {
-      errors.push('First name is required');
-    }
+    const cleanedData = cleanBuyerData(req.body);
+    console.log('Cleaned buyer data:', cleanedData);
     
-    if (!lastName || lastName.trim().length === 0) {
-      errors.push('Last name is required');
+    // Validation
+    if (!cleanedData.firstName) {
+      return res.status(400).json({ error: 'First name is required' });
     }
     
-    if (!phone || phone.trim().length === 0) {
-      errors.push('Phone is required');
+    if (!cleanedData.lastName) {
+      return res.status(400).json({ error: 'Last name is required' });
+    }
+    
+    if (!cleanedData.phone) {
+      return res.status(400).json({ error: 'Phone number is required' });
+    }
+    
+    // Email validation
+    if (cleanedData.email && !cleanedData.email.includes('@')) {
+      return res.status(400).json({ error: 'Invalid email address' });
+    }
+    
+    // Budget validation
+    if (cleanedData.budgetMin && cleanedData.budgetMax && 
+        parseFloat(cleanedData.budgetMin) > parseFloat(cleanedData.budgetMax)) {
+      return res.status(400).json({ error: 'Minimum budget cannot be greater than maximum budget' });
+    }
+    
+    // Check for duplicate phone
+    const existingBuyer = await prisma.buyer.findFirst({
+      where: { phone: cleanedData.phone }
+    });
+    
+    if (existingBuyer) {
+      return res.status(400).json({ error: 'Buyer with this phone number already exists' });
     }
 
-    // Validate email format if provided
-    if (email && email.trim().length > 0) {
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(email.trim())) {
-        errors.push('Invalid email format');
-      }
-    }
-
-    // Validate budget range
-    if (budgetMin && budgetMax) {
-      const minVal = parseFloat(budgetMin);
-      const maxVal = parseFloat(budgetMax);
-      if (!isNaN(minVal) && !isNaN(maxVal) && minVal > maxVal) {
-        errors.push('budgetMin cannot be greater than budgetMax');
-      }
-    }
-
-    // Validate status
-    if (status && !['potential', 'active', 'inactive', 'converted'].includes(status)) {
-      errors.push('Invalid status value');
-    }
-
-    // Validate property type preference
-    if (preferredPropertyType && !['any', 'sale', 'rent'].includes(preferredPropertyType)) {
-      errors.push('Invalid preferred property type');
-    }
-
-    if (errors.length > 0) {
-      return res.status(400).json({ 
-        error: 'Validation failed',
-        details: errors 
-      });
-    }
-
-    // Prepare data for database
-    const buyerData = {
-      firstName: firstName.trim(),
-      lastName: lastName.trim(),
-      phone: phone.trim(),
-      email: email && email.trim().length > 0 ? email.trim() : null,
-      budgetMin: budgetMin && !isNaN(parseFloat(budgetMin)) ? parseFloat(budgetMin).toString() : null,
-      budgetMax: budgetMax && !isNaN(parseFloat(budgetMax)) ? parseFloat(budgetMax).toString() : null,
-      preferredPropertyType: preferredPropertyType || 'any',
-      preferredAreas: Array.isArray(preferredAreas) ? preferredAreas.filter(area => area && area.trim()) : [],
-      preferredRooms: preferredRooms && !isNaN(parseInt(preferredRooms)) ? parseInt(preferredRooms) : null,
-      notes: notes ? notes.trim() : '',
-      status: status || 'potential',
-      assignedAgentId: assignedAgentId && !isNaN(parseInt(assignedAgentId)) ? parseInt(assignedAgentId) : 1, // Default to first agent
-      lastContact: new Date()
-    };
-
-    console.log('Processed buyer data:', buyerData);
-
-    const buyer = await prisma.buyer.create({
-      data: buyerData,
+    const newBuyer = await prisma.buyer.create({
+      data: cleanedData,
       include: {
-        assignedAgent: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true
-          }
-        }
+        assignedAgent: true
       }
     });
 
-    console.log('Created buyer:', buyer.id);
-    res.status(201).json(buyer);
+    console.log('Created buyer:', newBuyer);
+    res.status(201).json(newBuyer);
+
   } catch (error) {
     console.error('Error creating buyer:', error);
-    if (error.code === 'P2002') {
-      return res.status(400).json({ 
-        error: 'Phone number already exists',
-        details: 'This phone number is already registered for another buyer' 
-      });
-    }
     res.status(500).json({ 
       error: 'Failed to create buyer',
       details: error.message 
@@ -229,152 +240,75 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const updateData = { ...req.body };
-
-    console.log('Updating buyer', id, 'with data:', updateData);
-
-    if (!id || isNaN(parseInt(id))) {
+    const buyerId = parseInt(id);
+    
+    console.log(`Updating buyer ${buyerId} with data:`, req.body);
+    
+    if (isNaN(buyerId)) {
       return res.status(400).json({ error: 'Invalid buyer ID' });
     }
 
     // Check if buyer exists
     const existingBuyer = await prisma.buyer.findUnique({
-      where: { id: parseInt(id) }
+      where: { id: buyerId }
     });
 
     if (!existingBuyer) {
       return res.status(404).json({ error: 'Buyer not found' });
     }
 
-    // Validate and clean data
-    const cleanData = {};
+    const cleanedData = cleanBuyerData(req.body);
+    console.log('Cleaned update data:', cleanedData);
     
-    if (updateData.firstName !== undefined) {
-      if (!updateData.firstName || updateData.firstName.trim().length === 0) {
-        return res.status(400).json({ error: 'First name cannot be empty' });
-      }
-      cleanData.firstName = updateData.firstName.trim();
+    // Email validation for updates
+    if (cleanedData.email && !cleanedData.email.includes('@')) {
+      return res.status(400).json({ error: 'Invalid email address' });
     }
-
-    if (updateData.lastName !== undefined) {
-      if (!updateData.lastName || updateData.lastName.trim().length === 0) {
-        return res.status(400).json({ error: 'Last name cannot be empty' });
-      }
-      cleanData.lastName = updateData.lastName.trim();
+    
+    // Budget validation
+    if (cleanedData.budgetMin && cleanedData.budgetMax && 
+        parseFloat(cleanedData.budgetMin) > parseFloat(cleanedData.budgetMax)) {
+      return res.status(400).json({ error: 'Minimum budget cannot be greater than maximum budget' });
     }
-
-    if (updateData.phone !== undefined) {
-      if (!updateData.phone || updateData.phone.trim().length === 0) {
-        return res.status(400).json({ error: 'Phone cannot be empty' });
-      }
-      cleanData.phone = updateData.phone.trim();
-    }
-
-    if (updateData.email !== undefined) {
-      if (updateData.email && updateData.email.trim().length > 0) {
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(updateData.email.trim())) {
-          return res.status(400).json({ error: 'Invalid email format' });
+    
+    // Check for duplicate phone (excluding current buyer)
+    if (cleanedData.phone && cleanedData.phone !== existingBuyer.phone) {
+      const duplicateBuyer = await prisma.buyer.findFirst({
+        where: { 
+          phone: cleanedData.phone,
+          id: { not: buyerId }
         }
-        cleanData.email = updateData.email.trim();
-      } else {
-        cleanData.email = null;
-      }
-    }
-
-    if (updateData.budgetMin !== undefined) {
-      if (updateData.budgetMin && (isNaN(parseFloat(updateData.budgetMin)) || parseFloat(updateData.budgetMin) < 0)) {
-        return res.status(400).json({ error: 'Invalid minimum budget' });
-      }
-      cleanData.budgetMin = updateData.budgetMin && !isNaN(parseFloat(updateData.budgetMin)) ? parseFloat(updateData.budgetMin).toString() : null;
-    }
-
-    if (updateData.budgetMax !== undefined) {
-      if (updateData.budgetMax && (isNaN(parseFloat(updateData.budgetMax)) || parseFloat(updateData.budgetMax) < 0)) {
-        return res.status(400).json({ error: 'Invalid maximum budget' });
-      }
-      cleanData.budgetMax = updateData.budgetMax && !isNaN(parseFloat(updateData.budgetMax)) ? parseFloat(updateData.budgetMax).toString() : null;
-    }
-
-    // Validate budget range
-    if ((cleanData.budgetMin !== undefined || cleanData.budgetMax !== undefined)) {
-      const minVal = cleanData.budgetMin !== undefined ? cleanData.budgetMin : existingBuyer.budgetMin;
-      const maxVal = cleanData.budgetMax !== undefined ? cleanData.budgetMax : existingBuyer.budgetMax;
+      });
       
-      if (minVal && maxVal && parseFloat(minVal) > parseFloat(maxVal)) {
-        return res.status(400).json({ error: 'budgetMin cannot be greater than budgetMax' });
+      if (duplicateBuyer) {
+        return res.status(400).json({ error: 'Another buyer with this phone number already exists' });
       }
     }
-
-    if (updateData.preferredPropertyType !== undefined) {
-      if (!['any', 'sale', 'rent'].includes(updateData.preferredPropertyType)) {
-        return res.status(400).json({ error: 'Invalid preferred property type' });
+    
+    // Remove undefined/null values for update
+    const updateData = {};
+    Object.keys(cleanedData).forEach(key => {
+      if (cleanedData[key] !== undefined && cleanedData[key] !== null) {
+        updateData[key] = cleanedData[key];
       }
-      cleanData.preferredPropertyType = updateData.preferredPropertyType;
-    }
+    });
+    
+    console.log('Final update data:', updateData);
 
-    if (updateData.preferredAreas !== undefined) {
-      cleanData.preferredAreas = Array.isArray(updateData.preferredAreas) ? 
-        updateData.preferredAreas.filter(area => area && area.trim()) : [];
-    }
-
-    if (updateData.preferredRooms !== undefined) {
-      if (updateData.preferredRooms && (isNaN(parseInt(updateData.preferredRooms)) || parseInt(updateData.preferredRooms) < 1)) {
-        return res.status(400).json({ error: 'Invalid preferred rooms' });
-      }
-      cleanData.preferredRooms = updateData.preferredRooms && !isNaN(parseInt(updateData.preferredRooms)) ? parseInt(updateData.preferredRooms) : null;
-    }
-
-    if (updateData.status !== undefined) {
-      if (!['potential', 'active', 'inactive', 'converted'].includes(updateData.status)) {
-        return res.status(400).json({ error: 'Invalid status value' });
-      }
-      cleanData.status = updateData.status;
-    }
-
-    if (updateData.notes !== undefined) {
-      cleanData.notes = updateData.notes ? updateData.notes.trim() : '';
-    }
-
-    if (updateData.assignedAgentId !== undefined) {
-      cleanData.assignedAgentId = updateData.assignedAgentId && !isNaN(parseInt(updateData.assignedAgentId)) ? parseInt(updateData.assignedAgentId) : null;
-    }
-
-    // Update last contact date if status or notes changed
-    if (cleanData.status !== undefined || cleanData.notes !== undefined) {
-      cleanData.lastContact = new Date();
-    }
-
-    console.log('Clean data for update:', cleanData);
-
-    const buyer = await prisma.buyer.update({
-      where: { id: parseInt(id) },
-      data: cleanData,
+    const updatedBuyer = await prisma.buyer.update({
+      where: { id: buyerId },
+      data: updateData,
       include: {
-        assignedAgent: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true
-          }
-        }
+        assignedAgent: true,
+        viewedProperties: true
       }
     });
 
-    console.log('Updated buyer:', buyer.id);
-    res.json(buyer);
+    console.log('Updated buyer:', updatedBuyer);
+    res.json(updatedBuyer);
+
   } catch (error) {
     console.error('Error updating buyer:', error);
-    if (error.code === 'P2025') {
-      return res.status(404).json({ error: 'Buyer not found' });
-    }
-    if (error.code === 'P2002') {
-      return res.status(400).json({ 
-        error: 'Phone number already exists',
-        details: 'This phone number is already registered for another buyer' 
-      });
-    }
     res.status(500).json({ 
       error: 'Failed to update buyer',
       details: error.message 
@@ -386,32 +320,38 @@ router.put('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-
-    if (!id || isNaN(parseInt(id))) {
+    const buyerId = parseInt(id);
+    
+    if (isNaN(buyerId)) {
       return res.status(400).json({ error: 'Invalid buyer ID' });
     }
 
     // Check if buyer exists
-    const buyer = await prisma.buyer.findUnique({
-      where: { id: parseInt(id) }
+    const existingBuyer = await prisma.buyer.findUnique({
+      where: { id: buyerId }
     });
 
-    if (!buyer) {
+    if (!existingBuyer) {
       return res.status(404).json({ error: 'Buyer not found' });
     }
+
+    // Delete related tasks first
+    await prisma.task.deleteMany({
+      where: { buyerId: buyerId }
+    });
 
     // Delete the buyer
     await prisma.buyer.delete({
-      where: { id: parseInt(id) }
+      where: { id: buyerId }
     });
 
-    console.log('Deleted buyer:', id);
-    res.json({ message: 'Buyer deleted successfully' });
+    res.json({ 
+      message: 'Buyer deleted successfully',
+      deletedId: buyerId 
+    });
+
   } catch (error) {
     console.error('Error deleting buyer:', error);
-    if (error.code === 'P2025') {
-      return res.status(404).json({ error: 'Buyer not found' });
-    }
     res.status(500).json({ 
       error: 'Failed to delete buyer',
       details: error.message 
@@ -419,103 +359,276 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
-// PATCH /api/buyers/:id/contact - Update last contact date
-router.patch('/:id/contact', async (req, res) => {
+// PUT /api/buyers/:id/archive - Archive buyer
+router.put('/:id/archive', async (req, res) => {
   try {
     const { id } = req.params;
-    const { notes } = req.body;
-
-    if (!id || isNaN(parseInt(id))) {
+    const buyerId = parseInt(id);
+    
+    if (isNaN(buyerId)) {
       return res.status(400).json({ error: 'Invalid buyer ID' });
     }
 
-    const updateData = {
-      lastContact: new Date()
-    };
-
-    if (notes !== undefined) {
-      updateData.notes = notes ? notes.trim() : '';
-    }
-
-    const buyer = await prisma.buyer.update({
-      where: { id: parseInt(id) },
-      data: updateData,
+    const updatedBuyer = await prisma.buyer.update({
+      where: { id: buyerId },
+      data: { 
+        status: 'archived',
+        archivedAt: new Date()
+      },
       include: {
-        assignedAgent: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true
-          }
-        }
+        assignedAgent: true
       }
     });
 
-    res.json(buyer);
+    res.json(updatedBuyer);
+
   } catch (error) {
-    console.error('Error updating contact:', error);
-    if (error.code === 'P2025') {
-      return res.status(404).json({ error: 'Buyer not found' });
-    }
+    console.error('Error archiving buyer:', error);
     res.status(500).json({ 
-      error: 'Failed to update contact',
+      error: 'Failed to archive buyer',
       details: error.message 
     });
   }
 });
 
-// PATCH /api/buyers/:id/status - Update buyer status
-router.patch('/:id/status', async (req, res) => {
+// PUT /api/buyers/:id/assign-agent - Assign agent to buyer
+router.put('/:id/assign-agent', async (req, res) => {
   try {
     const { id } = req.params;
-    const { status, notes } = req.body;
-
-    if (!id || isNaN(parseInt(id))) {
-      return res.status(400).json({ error: 'Invalid buyer ID' });
+    const { agentId } = req.body;
+    const buyerId = parseInt(id);
+    const agentIdInt = parseInt(agentId);
+    
+    if (isNaN(buyerId) || isNaN(agentIdInt)) {
+      return res.status(400).json({ error: 'Invalid buyer or agent ID' });
     }
 
-    if (!status) {
-      return res.status(400).json({ error: 'Status is required' });
+    // Check if agent exists
+    const agent = await prisma.user.findUnique({
+      where: { id: agentIdInt }
+    });
+
+    if (!agent) {
+      return res.status(404).json({ error: 'Agent not found' });
     }
 
-    const validStatuses = ['potential', 'active', 'inactive', 'converted'];
-    if (!validStatuses.includes(status)) {
-      return res.status(400).json({ error: 'Invalid status value' });
-    }
-
-    const updateData = {
-      status,
-      lastContact: new Date()
-    };
-
-    if (notes !== undefined) {
-      updateData.notes = notes ? notes.trim() : '';
-    }
-
-    const buyer = await prisma.buyer.update({
-      where: { id: parseInt(id) },
-      data: updateData,
+    const updatedBuyer = await prisma.buyer.update({
+      where: { id: buyerId },
+      data: { assignedAgentId: agentIdInt },
       include: {
-        assignedAgent: {
+        assignedAgent: true
+      }
+    });
+
+    res.json(updatedBuyer);
+
+  } catch (error) {
+    console.error('Error assigning agent to buyer:', error);
+    res.status(500).json({ 
+      error: 'Failed to assign agent to buyer',
+      details: error.message 
+    });
+  }
+});
+
+// POST /api/buyers/:id/viewed-properties - Add viewed property
+router.post('/:id/viewed-properties', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { propertyId } = req.body;
+    const buyerId = parseInt(id);
+    const propertyIdInt = parseInt(propertyId);
+    
+    if (isNaN(buyerId) || isNaN(propertyIdInt)) {
+      return res.status(400).json({ error: 'Invalid buyer or property ID' });
+    }
+
+    // Check if property exists
+    const property = await prisma.property.findUnique({
+      where: { id: propertyIdInt }
+    });
+
+    if (!property) {
+      return res.status(404).json({ error: 'Property not found' });
+    }
+
+    // Create viewing record
+    const viewing = await prisma.propertyViewing.create({
+      data: {
+        buyerId: buyerId,
+        propertyId: propertyIdInt,
+        viewedAt: new Date()
+      },
+      include: {
+        property: {
           select: {
             id: true,
-            firstName: true,
-            lastName: true,
-            email: true
+            title: true,
+            address: true,
+            propertyType: true,
+            priceEur: true,
+            monthlyRentEur: true
           }
         }
       }
     });
 
-    res.json(buyer);
+    // Increment property viewings
+    await prisma.property.update({
+      where: { id: propertyIdInt },
+      data: { 
+        viewings: { increment: 1 },
+        lastViewing: new Date()
+      }
+    });
+
+    res.status(201).json(viewing);
+
   } catch (error) {
-    console.error('Error updating status:', error);
-    if (error.code === 'P2025') {
+    console.error('Error adding viewed property:', error);
+    res.status(500).json({ 
+      error: 'Failed to add viewed property',
+      details: error.message 
+    });
+  }
+});
+
+// GET /api/buyers/:id/matching-properties - Get matching properties for buyer
+router.get('/:id/matching-properties', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const buyerId = parseInt(id);
+    
+    if (isNaN(buyerId)) {
+      return res.status(400).json({ error: 'Invalid buyer ID' });
+    }
+
+    const buyer = await prisma.buyer.findUnique({
+      where: { id: buyerId }
+    });
+
+    if (!buyer) {
       return res.status(404).json({ error: 'Buyer not found' });
     }
+
+    // Build matching criteria
+    const where = {
+      status: 'available'
+    };
+
+    // Property type matching
+    if (buyer.preferredPropertyType && buyer.preferredPropertyType !== 'any') {
+      where.propertyType = buyer.preferredPropertyType;
+    }
+
+    // Budget matching
+    if (buyer.budgetMax) {
+      if (buyer.preferredPropertyType === 'sale') {
+        where.priceEur = { lte: buyer.budgetMax };
+      } else {
+        where.monthlyRentEur = { lte: buyer.budgetMax };
+      }
+    }
+
+    // Room preferences
+    if (buyer.preferredRooms) {
+      where.rooms = buyer.preferredRooms;
+    }
+
+    // Area preferences
+    if (buyer.preferredAreas && buyer.preferredAreas.length > 0) {
+      where.OR = buyer.preferredAreas.map(area => ({
+        OR: [
+          { city: { contains: area, mode: 'insensitive' } },
+          { district: { contains: area, mode: 'insensitive' } }
+        ]
+      }));
+    }
+
+    const matchingProperties = await prisma.property.findMany({
+      where,
+      include: {
+        seller: {
+          select: { firstName: true, lastName: true, phone: true }
+        },
+        assignedAgent: {
+          select: { firstName: true, lastName: true, email: true }
+        }
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 20
+    });
+
+    res.json({
+      buyerId,
+      criteria: {
+        propertyType: buyer.preferredPropertyType,
+        maxBudget: buyer.budgetMax,
+        preferredRooms: buyer.preferredRooms,
+        preferredAreas: buyer.preferredAreas
+      },
+      matches: matchingProperties,
+      count: matchingProperties.length
+    });
+
+  } catch (error) {
+    console.error('Error finding matching properties:', error);
     res.status(500).json({ 
-      error: 'Failed to update status',
+      error: 'Failed to find matching properties',
+      details: error.message 
+    });
+  }
+});
+
+// GET /api/buyers/stats - Get buyer statistics
+router.get('/stats/summary', async (req, res) => {
+  try {
+    const [
+      totalBuyers,
+      activeBuyers,
+      potentialBuyers,
+      convertedBuyers,
+      inactiveBuyers,
+      buyersByType,
+      averageBudget
+    ] = await Promise.all([
+      prisma.buyer.count(),
+      prisma.buyer.count({ where: { status: 'active' } }),
+      prisma.buyer.count({ where: { status: 'potential' } }),
+      prisma.buyer.count({ where: { status: 'converted' } }),
+      prisma.buyer.count({ where: { status: 'inactive' } }),
+      
+      prisma.buyer.groupBy({
+        by: ['preferredPropertyType'],
+        _count: { id: true }
+      }),
+      
+      prisma.buyer.aggregate({
+        _avg: { budgetMax: true },
+        where: { budgetMax: { not: null } }
+      })
+    ]);
+
+    res.json({
+      total: totalBuyers,
+      byStatus: {
+        active: activeBuyers,
+        potential: potentialBuyers,
+        converted: convertedBuyers,
+        inactive: inactiveBuyers
+      },
+      byType: buyersByType.reduce((acc, item) => {
+        acc[item.preferredPropertyType || 'any'] = item._count.id;
+        return acc;
+      }, {}),
+      averageBudget: averageBudget._avg.budgetMax ? Math.round(parseFloat(averageBudget._avg.budgetMax)) : null,
+      conversionRate: totalBuyers > 0 ? Math.round((convertedBuyers / totalBuyers) * 100) : 0
+    });
+
+  } catch (error) {
+    console.error('Error fetching buyer statistics:', error);
+    res.status(500).json({ 
+      error: 'Failed to fetch buyer statistics',
       details: error.message 
     });
   }
