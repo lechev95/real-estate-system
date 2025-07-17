@@ -1,42 +1,108 @@
-// backend/routes/tasks.js
+// backend/routes/tasks.js - COMPLETE TASKS FUNCTIONALITY
 const express = require('express');
 const router = express.Router();
 const { PrismaClient } = require('@prisma/client');
 
 const prisma = new PrismaClient();
 
-// GET /api/tasks - Get all tasks with filters
+// Helper function to clean task data
+const cleanTaskData = (data) => {
+  const cleaned = {};
+  
+  // Required fields
+  if (data.title) cleaned.title = data.title.toString().trim();
+  if (data.description) cleaned.description = data.description.toString().trim();
+  
+  // Status and priority
+  cleaned.status = data.status?.toString() || 'pending';
+  cleaned.priority = data.priority?.toString() || 'medium';
+  cleaned.type = data.type?.toString() || 'general';
+  
+  // Date fields
+  if (data.dueDate) {
+    const dueDate = new Date(data.dueDate);
+    if (!isNaN(dueDate.getTime())) {
+      cleaned.dueDate = dueDate;
+    }
+  }
+  
+  if (data.completedAt) {
+    const completedAt = new Date(data.completedAt);
+    if (!isNaN(completedAt.getTime())) {
+      cleaned.completedAt = completedAt;
+    }
+  }
+  
+  // ID fields for relationships
+  ['propertyId', 'buyerId', 'sellerId', 'assignedAgentId'].forEach(field => {
+    if (data[field] !== undefined && data[field] !== null && data[field] !== '') {
+      const id = parseInt(data[field]);
+      if (!isNaN(id) && id > 0) cleaned[field] = id;
+    }
+  });
+  
+  // Optional fields
+  if (data.notes && typeof data.notes === 'string') {
+    cleaned.notes = data.notes.trim();
+  }
+  
+  if (data.location && typeof data.location === 'string') {
+    cleaned.location = data.location.trim();
+  }
+  
+  // Duration in minutes
+  if (data.estimatedDuration !== undefined && data.estimatedDuration !== null && data.estimatedDuration !== '') {
+    const duration = parseInt(data.estimatedDuration);
+    if (!isNaN(duration) && duration > 0) cleaned.estimatedDuration = duration;
+  }
+  
+  return cleaned;
+};
+
+// GET /api/tasks - Get all tasks
 router.get('/', async (req, res) => {
   try {
-    const { status, priority, type, dueDate, page = 1, limit = 20 } = req.query;
+    const { 
+      page = 1, 
+      limit = 50, 
+      status, 
+      priority, 
+      type, 
+      agentId, 
+      propertyId, 
+      dueDate,
+      overdue = 'false'
+    } = req.query;
+    
+    const skip = (parseInt(page) - 1) * parseInt(limit);
     
     const where = {};
-    
-    if (status && status !== 'all') {
-      where.status = status;
-    }
-    
-    if (priority && priority !== 'all') {
-      where.priority = priority;
-    }
-    
-    if (type && type !== 'all') {
-      where.type = type;
-    }
+    if (status && status !== 'all') where.status = status;
+    if (priority && priority !== 'all') where.priority = priority;
+    if (type && type !== 'all') where.type = type;
+    if (agentId) where.assignedAgentId = parseInt(agentId);
+    if (propertyId) where.propertyId = parseInt(propertyId);
     
     if (dueDate) {
       const date = new Date(dueDate);
-      where.dueDate = {
-        gte: new Date(date.setHours(0, 0, 0, 0)),
-        lte: new Date(date.setHours(23, 59, 59, 999))
-      };
+      if (!isNaN(date.getTime())) {
+        where.dueDate = {
+          gte: new Date(date.setHours(0, 0, 0, 0)),
+          lte: new Date(date.setHours(23, 59, 59, 999))
+        };
+      }
     }
-
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    
+    if (overdue === 'true') {
+      where.dueDate = { lt: new Date() };
+      where.status = { not: 'completed' };
+    }
     
     const [tasks, total] = await Promise.all([
       prisma.task.findMany({
         where,
+        skip,
+        take: parseInt(limit),
         include: {
           assignedAgent: {
             select: {
@@ -50,7 +116,10 @@ router.get('/', async (req, res) => {
             select: {
               id: true,
               title: true,
-              address: true
+              address: true,
+              city: true,
+              propertyType: true,
+              status: true
             }
           },
           buyer: {
@@ -58,69 +127,65 @@ router.get('/', async (req, res) => {
               id: true,
               firstName: true,
               lastName: true,
-              phone: true
+              phone: true,
+              email: true
+            }
+          },
+          seller: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              phone: true,
+              email: true
             }
           }
         },
         orderBy: [
-          { status: 'asc' }, // Pending tasks first
-          { priority: 'desc' }, // High priority first
-          { dueDate: 'asc' } // Earlier due dates first
-        ],
-        skip,
-        take: parseInt(limit)
+          { status: 'asc' }, // pending first
+          { priority: 'desc' }, // high priority first
+          { dueDate: 'asc' } // earliest due date first
+        ]
       }),
       prisma.task.count({ where })
     ]);
 
-    const pagination = {
-      page: parseInt(page),
-      limit: parseInt(limit),
-      total,
-      pages: Math.ceil(total / parseInt(limit))
-    };
+    res.json({
+      tasks,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        pages: Math.ceil(total / parseInt(limit))
+      }
+    });
 
-    res.json({ tasks, pagination });
   } catch (error) {
     console.error('Error fetching tasks:', error);
-    res.status(500).json({ error: 'Failed to fetch tasks' });
+    res.status(500).json({ 
+      error: 'Failed to fetch tasks',
+      details: error.message 
+    });
   }
 });
 
-// GET /api/tasks/:id - Get single task
+// GET /api/tasks/:id - Get task by ID
 router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    const taskId = parseInt(id);
     
+    if (isNaN(taskId)) {
+      return res.status(400).json({ error: 'Invalid task ID' });
+    }
+
     const task = await prisma.task.findUnique({
-      where: { id: parseInt(id) },
+      where: { id: taskId },
       include: {
-        assignedAgent: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true
-          }
-        },
-        property: {
-          select: {
-            id: true,
-            title: true,
-            address: true,
-            city: true,
-            district: true
-          }
-        },
-        buyer: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            phone: true,
-            email: true
-          }
-        }
+        assignedAgent: true,
+        property: true,
+        buyer: true,
+        seller: true
       }
     });
 
@@ -129,102 +194,60 @@ router.get('/:id', async (req, res) => {
     }
 
     res.json(task);
+
   } catch (error) {
     console.error('Error fetching task:', error);
-    res.status(500).json({ error: 'Failed to fetch task' });
+    res.status(500).json({ 
+      error: 'Failed to fetch task',
+      details: error.message 
+    });
   }
 });
 
 // POST /api/tasks - Create new task
 router.post('/', async (req, res) => {
   try {
-    const {
-      title,
-      description,
-      type,
-      priority = 'medium',
-      status = 'pending',
-      dueDate,
-      assignedAgentId,
-      propertyId,
-      buyerId
-    } = req.body;
-
+    console.log('Creating task with data:', req.body);
+    
+    const cleanedData = cleanTaskData(req.body);
+    console.log('Cleaned task data:', cleanedData);
+    
     // Validation
-    if (!title || !type || !dueDate) {
-      return res.status(400).json({ 
-        error: 'Missing required fields: title, type, dueDate' 
-      });
+    if (!cleanedData.title) {
+      return res.status(400).json({ error: 'Title is required' });
+    }
+    
+    if (!cleanedData.description) {
+      return res.status(400).json({ error: 'Description is required' });
+    }
+    
+    // Set default due date if not provided (tomorrow)
+    if (!cleanedData.dueDate) {
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      tomorrow.setHours(9, 0, 0, 0); // 9 AM tomorrow
+      cleanedData.dueDate = tomorrow;
     }
 
-    // Validate enum values
-    const validTypes = ['call', 'viewing', 'meeting', 'document', 'follow_up', 'other'];
-    const validPriorities = ['low', 'medium', 'high', 'urgent'];
-    const validStatuses = ['pending', 'in_progress', 'completed', 'cancelled'];
-
-    if (!validTypes.includes(type)) {
-      return res.status(400).json({ error: 'Invalid task type' });
-    }
-
-    if (!validPriorities.includes(priority)) {
-      return res.status(400).json({ error: 'Invalid priority level' });
-    }
-
-    if (!validStatuses.includes(status)) {
-      return res.status(400).json({ error: 'Invalid status' });
-    }
-
-    // Validate due date
-    const dueDateObj = new Date(dueDate);
-    if (isNaN(dueDateObj.getTime())) {
-      return res.status(400).json({ error: 'Invalid due date format' });
-    }
-
-    const taskData = {
-      title,
-      description: description || '',
-      type,
-      priority,
-      status,
-      dueDate: dueDateObj,
-      assignedAgentId: assignedAgentId ? parseInt(assignedAgentId) : 1, // Default to first agent
-      propertyId: propertyId ? parseInt(propertyId) : null,
-      buyerId: buyerId ? parseInt(buyerId) : null
-    };
-
-    const task = await prisma.task.create({
-      data: taskData,
+    const newTask = await prisma.task.create({
+      data: cleanedData,
       include: {
-        assignedAgent: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true
-          }
-        },
-        property: {
-          select: {
-            id: true,
-            title: true,
-            address: true
-          }
-        },
-        buyer: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            phone: true
-          }
-        }
+        assignedAgent: true,
+        property: true,
+        buyer: true,
+        seller: true
       }
     });
 
-    res.status(201).json(task);
+    console.log('Created task:', newTask);
+    res.status(201).json(newTask);
+
   } catch (error) {
     console.error('Error creating task:', error);
-    res.status(500).json({ error: 'Failed to create task' });
+    res.status(500).json({ 
+      error: 'Failed to create task',
+      details: error.message 
+    });
   }
 });
 
@@ -232,86 +255,63 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const updateData = { ...req.body };
-
-    // Convert numeric fields
-    if (updateData.assignedAgentId) updateData.assignedAgentId = parseInt(updateData.assignedAgentId);
-    if (updateData.propertyId) updateData.propertyId = parseInt(updateData.propertyId);
-    if (updateData.buyerId) updateData.buyerId = parseInt(updateData.buyerId);
-
-    // Convert date fields
-    if (updateData.dueDate) {
-      const dueDateObj = new Date(updateData.dueDate);
-      if (isNaN(dueDateObj.getTime())) {
-        return res.status(400).json({ error: 'Invalid due date format' });
-      }
-      updateData.dueDate = dueDateObj;
+    const taskId = parseInt(id);
+    
+    console.log(`Updating task ${taskId} with data:`, req.body);
+    
+    if (isNaN(taskId)) {
+      return res.status(400).json({ error: 'Invalid task ID' });
     }
 
-    // Validate enum values if provided
-    if (updateData.type) {
-      const validTypes = ['call', 'viewing', 'meeting', 'document', 'follow_up', 'other'];
-      if (!validTypes.includes(updateData.type)) {
-        return res.status(400).json({ error: 'Invalid task type' });
-      }
+    // Check if task exists
+    const existingTask = await prisma.task.findUnique({
+      where: { id: taskId }
+    });
+
+    if (!existingTask) {
+      return res.status(404).json({ error: 'Task not found' });
     }
 
-    if (updateData.priority) {
-      const validPriorities = ['low', 'medium', 'high', 'urgent'];
-      if (!validPriorities.includes(updateData.priority)) {
-        return res.status(400).json({ error: 'Invalid priority level' });
-      }
+    const cleanedData = cleanTaskData(req.body);
+    console.log('Cleaned update data:', cleanedData);
+    
+    // Auto-set completedAt when status changes to completed
+    if (cleanedData.status === 'completed' && existingTask.status !== 'completed') {
+      cleanedData.completedAt = new Date();
+    } else if (cleanedData.status !== 'completed' && existingTask.status === 'completed') {
+      cleanedData.completedAt = null;
     }
-
-    if (updateData.status) {
-      const validStatuses = ['pending', 'in_progress', 'completed', 'cancelled'];
-      if (!validStatuses.includes(updateData.status)) {
-        return res.status(400).json({ error: 'Invalid status' });
+    
+    // Remove undefined/null values for update
+    const updateData = {};
+    Object.keys(cleanedData).forEach(key => {
+      if (cleanedData[key] !== undefined) {
+        updateData[key] = cleanedData[key];
       }
-      
-      // Set completion date if status changed to completed
-      if (updateData.status === 'completed') {
-        updateData.completedAt = new Date();
-      }
-    }
+    });
+    
+    console.log('Final update data:', updateData);
 
-    const task = await prisma.task.update({
-      where: { id: parseInt(id) },
+    const updatedTask = await prisma.task.update({
+      where: { id: taskId },
       data: updateData,
       include: {
-        assignedAgent: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true
-          }
-        },
-        property: {
-          select: {
-            id: true,
-            title: true,
-            address: true
-          }
-        },
-        buyer: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            phone: true
-          }
-        }
+        assignedAgent: true,
+        property: true,
+        buyer: true,
+        seller: true
       }
     });
 
-    res.json(task);
+    console.log('Updated task:', updatedTask);
+    res.json(updatedTask);
+
   } catch (error) {
     console.error('Error updating task:', error);
-    if (error.code === 'P2025') {
-      return res.status(404).json({ error: 'Task not found' });
-    }
-    res.status(500).json({ error: 'Failed to update task' });
+    res.status(500).json({ 
+      error: 'Failed to update task',
+      details: error.message 
+    });
   }
 });
 
@@ -319,190 +319,267 @@ router.put('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    const taskId = parseInt(id);
+    
+    if (isNaN(taskId)) {
+      return res.status(400).json({ error: 'Invalid task ID' });
+    }
 
     // Check if task exists
-    const task = await prisma.task.findUnique({
-      where: { id: parseInt(id) }
+    const existingTask = await prisma.task.findUnique({
+      where: { id: taskId }
     });
 
-    if (!task) {
+    if (!existingTask) {
       return res.status(404).json({ error: 'Task not found' });
     }
 
     // Delete the task
     await prisma.task.delete({
-      where: { id: parseInt(id) }
+      where: { id: taskId }
     });
 
-    res.json({ message: 'Task deleted successfully' });
+    res.json({ 
+      message: 'Task deleted successfully',
+      deletedId: taskId 
+    });
+
   } catch (error) {
     console.error('Error deleting task:', error);
-    if (error.code === 'P2025') {
-      return res.status(404).json({ error: 'Task not found' });
-    }
-    res.status(500).json({ error: 'Failed to delete task' });
+    res.status(500).json({ 
+      error: 'Failed to delete task',
+      details: error.message 
+    });
   }
 });
 
-// PATCH /api/tasks/:id/complete - Mark task as completed
-router.patch('/:id/complete', async (req, res) => {
+// PUT /api/tasks/:id/complete - Mark task as completed
+router.put('/:id/complete', async (req, res) => {
   try {
     const { id } = req.params;
     const { notes } = req.body;
+    const taskId = parseInt(id);
+    
+    if (isNaN(taskId)) {
+      return res.status(400).json({ error: 'Invalid task ID' });
+    }
 
-    const task = await prisma.task.update({
-      where: { id: parseInt(id) },
-      data: {
-        status: 'completed',
-        completedAt: new Date(),
-        ...(notes && { description: notes })
-      },
+    const updateData = {
+      status: 'completed',
+      completedAt: new Date()
+    };
+    
+    if (notes) {
+      updateData.notes = notes.toString().trim();
+    }
+
+    const updatedTask = await prisma.task.update({
+      where: { id: taskId },
+      data: updateData,
       include: {
-        assignedAgent: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true
-          }
-        },
-        property: {
-          select: {
-            id: true,
-            title: true,
-            address: true
-          }
-        },
-        buyer: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            phone: true
-          }
-        }
+        assignedAgent: true,
+        property: true,
+        buyer: true,
+        seller: true
       }
     });
 
-    res.json(task);
+    res.json(updatedTask);
+
   } catch (error) {
     console.error('Error completing task:', error);
-    if (error.code === 'P2025') {
-      return res.status(404).json({ error: 'Task not found' });
-    }
-    res.status(500).json({ error: 'Failed to complete task' });
+    res.status(500).json({ 
+      error: 'Failed to complete task',
+      details: error.message 
+    });
   }
 });
 
-// PATCH /api/tasks/:id/status - Update task status
-router.patch('/:id/status', async (req, res) => {
+// PUT /api/tasks/:id/reopen - Reopen completed task
+router.put('/:id/reopen', async (req, res) => {
   try {
     const { id } = req.params;
-    const { status, notes } = req.body;
-
-    if (!status) {
-      return res.status(400).json({ error: 'Status is required' });
-    }
-
-    const validStatuses = ['pending', 'in_progress', 'completed', 'cancelled'];
-    if (!validStatuses.includes(status)) {
-      return res.status(400).json({ error: 'Invalid status value' });
-    }
-
-    const updateData = { status };
+    const taskId = parseInt(id);
     
-    // Set completion date if status is completed
-    if (status === 'completed') {
-      updateData.completedAt = new Date();
-    }
-    
-    // Add notes if provided
-    if (notes) {
-      updateData.description = notes;
+    if (isNaN(taskId)) {
+      return res.status(400).json({ error: 'Invalid task ID' });
     }
 
-    const task = await prisma.task.update({
-      where: { id: parseInt(id) },
-      data: updateData,
+    const updatedTask = await prisma.task.update({
+      where: { id: taskId },
+      data: {
+        status: 'pending',
+        completedAt: null
+      },
       include: {
-        assignedAgent: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true
-          }
-        },
-        property: {
-          select: {
-            id: true,
-            title: true,
-            address: true
-          }
-        },
-        buyer: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            phone: true
-          }
-        }
+        assignedAgent: true,
+        property: true,
+        buyer: true,
+        seller: true
       }
     });
 
-    res.json(task);
+    res.json(updatedTask);
+
   } catch (error) {
-    console.error('Error updating status:', error);
-    if (error.code === 'P2025') {
-      return res.status(404).json({ error: 'Task not found' });
-    }
-    res.status(500).json({ error: 'Failed to update status' });
+    console.error('Error reopening task:', error);
+    res.status(500).json({ 
+      error: 'Failed to reopen task',
+      details: error.message 
+    });
   }
 });
 
 // GET /api/tasks/overdue - Get overdue tasks
-router.get('/overdue', async (req, res) => {
+router.get('/overdue/list', async (req, res) => {
   try {
-    const tasks = await prisma.task.findMany({
-      where: {
-        AND: [
-          { status: { not: 'completed' } },
-          { dueDate: { lt: new Date() } }
-        ]
-      },
+    const { agentId } = req.query;
+    
+    const where = {
+      dueDate: { lt: new Date() },
+      status: { not: 'completed' }
+    };
+    
+    if (agentId) {
+      where.assignedAgentId = parseInt(agentId);
+    }
+
+    const overdueTasks = await prisma.task.findMany({
+      where,
       include: {
-        assignedAgent: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true
-          }
-        },
-        property: {
-          select: {
-            id: true,
-            title: true,
-            address: true
-          }
-        },
-        buyer: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            phone: true
-          }
-        }
+        assignedAgent: true,
+        property: true,
+        buyer: true,
+        seller: true
       },
       orderBy: { dueDate: 'asc' }
     });
 
-    res.json({ tasks, count: tasks.length });
+    res.json({
+      tasks: overdueTasks,
+      count: overdueTasks.length
+    });
+
   } catch (error) {
     console.error('Error fetching overdue tasks:', error);
-    res.status(500).json({ error: 'Failed to fetch overdue tasks' });
+    res.status(500).json({ 
+      error: 'Failed to fetch overdue tasks',
+      details: error.message 
+    });
+  }
+});
+
+// GET /api/tasks/upcoming - Get upcoming tasks (next 7 days)
+router.get('/upcoming/list', async (req, res) => {
+  try {
+    const { agentId, days = 7 } = req.query;
+    
+    const startDate = new Date();
+    const endDate = new Date();
+    endDate.setDate(endDate.getDate() + parseInt(days));
+    
+    const where = {
+      dueDate: {
+        gte: startDate,
+        lte: endDate
+      },
+      status: { not: 'completed' }
+    };
+    
+    if (agentId) {
+      where.assignedAgentId = parseInt(agentId);
+    }
+
+    const upcomingTasks = await prisma.task.findMany({
+      where,
+      include: {
+        assignedAgent: true,
+        property: true,
+        buyer: true,
+        seller: true
+      },
+      orderBy: { dueDate: 'asc' }
+    });
+
+    res.json({
+      tasks: upcomingTasks,
+      count: upcomingTasks.length,
+      period: `${days} days`
+    });
+
+  } catch (error) {
+    console.error('Error fetching upcoming tasks:', error);
+    res.status(500).json({ 
+      error: 'Failed to fetch upcoming tasks',
+      details: error.message 
+    });
+  }
+});
+
+// GET /api/tasks/summary - Get tasks summary
+router.get('/summary/stats', async (req, res) => {
+  try {
+    const { agentId } = req.query;
+    
+    const baseWhere = agentId ? { assignedAgentId: parseInt(agentId) } : {};
+    
+    const [
+      totalTasks,
+      pendingTasks,
+      inProgressTasks,
+      completedTasks,
+      overdueTasks,
+      todayTasks,
+      thisWeekTasks
+    ] = await Promise.all([
+      prisma.task.count({ where: baseWhere }),
+      prisma.task.count({ where: { ...baseWhere, status: 'pending' } }),
+      prisma.task.count({ where: { ...baseWhere, status: 'in_progress' } }),
+      prisma.task.count({ where: { ...baseWhere, status: 'completed' } }),
+      prisma.task.count({ 
+        where: { 
+          ...baseWhere, 
+          dueDate: { lt: new Date() },
+          status: { not: 'completed' }
+        } 
+      }),
+      prisma.task.count({
+        where: {
+          ...baseWhere,
+          dueDate: {
+            gte: new Date(new Date().setHours(0, 0, 0, 0)),
+            lte: new Date(new Date().setHours(23, 59, 59, 999))
+          }
+        }
+      }),
+      prisma.task.count({
+        where: {
+          ...baseWhere,
+          dueDate: {
+            gte: new Date(new Date().setDate(new Date().getDate() - new Date().getDay())),
+            lte: new Date(new Date().setDate(new Date().getDate() - new Date().getDay() + 6))
+          }
+        }
+      })
+    ]);
+
+    res.json({
+      total: totalTasks,
+      pending: pendingTasks,
+      inProgress: inProgressTasks,
+      completed: completedTasks,
+      overdue: overdueTasks,
+      today: todayTasks,
+      thisWeek: thisWeekTasks,
+      completionRate: totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
+    });
+
+  } catch (error) {
+    console.error('Error fetching tasks summary:', error);
+    res.status(500).json({ 
+      error: 'Failed to fetch tasks summary',
+      details: error.message 
+    });
   }
 });
 

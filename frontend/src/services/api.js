@@ -1,311 +1,506 @@
-// Enhanced API Service with Better Error Handling and Data Cleaning
+// frontend/src/services/api.js
 const API_BASE_URL = 'https://real-estate-crm-api-cwlr.onrender.com/api';
 
-// Enhanced API call function with retry logic
-const apiCall = async (endpoint, options = {}, retries = 2) => {
-  const url = `${API_BASE_URL}${endpoint}`;
-  const config = {
+// Helper function to clean data before sending
+const cleanData = (data) => {
+  const cleaned = {};
+  for (const [key, value] of Object.entries(data)) {
+    if (value !== null && value !== undefined && value !== '') {
+      if (typeof value === 'string') {
+        cleaned[key] = value.trim();
+      } else {
+        cleaned[key] = value;
+      }
+    }
+  }
+  return cleaned;
+};
+
+// Helper function to convert types
+const convertTypes = (data) => {
+  const converted = { ...data };
+  
+  // Convert numeric fields
+  const numericFields = ['area', 'rooms', 'priceEur', 'monthlyRentEur', 'managementFeePercent', 'budgetMin', 'budgetMax'];
+  numericFields.forEach(field => {
+    if (converted[field] && typeof converted[field] === 'string') {
+      const num = parseFloat(converted[field]);
+      if (!isNaN(num)) {
+        converted[field] = num;
+      }
+    }
+  });
+  
+  return converted;
+};
+
+// Helper function for API calls with retry logic
+const apiCall = async (url, options = {}, retries = 3) => {
+  const fullUrl = url.startsWith('http') ? url : `${API_BASE_URL}${url}`;
+  
+  const defaultOptions = {
     headers: {
       'Content-Type': 'application/json',
-      ...options.headers,
     },
-    ...options,
+    ...options
   };
 
-  for (let attempt = 0; attempt <= retries; attempt++) {
+  for (let i = 0; i < retries; i++) {
     try {
-      console.log(`API Call [Attempt ${attempt + 1}]:`, config.method || 'GET', url);
+      console.log(`API Call: ${options.method || 'GET'} ${fullUrl}`, options.body ? JSON.parse(options.body) : '');
       
-      const response = await fetch(url, config);
-      
-      // Log response status for debugging
-      console.log(`API Response [${response.status}]:`, response.statusText);
+      const response = await fetch(fullUrl, defaultOptions);
       
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        console.error('API Error Details:', errorData);
-        
-        throw new Error(`${response.status}: ${errorData.error || errorData.details || 'Unknown error'}`);
+        const errorText = await response.text();
+        let errorMessage;
+        try {
+          const errorJson = JSON.parse(errorText);
+          errorMessage = errorJson.error || errorJson.message || `HTTP ${response.status}`;
+        } catch {
+          errorMessage = errorText || `HTTP ${response.status} - ${response.statusText}`;
+        }
+        throw new Error(errorMessage);
       }
       
-      const data = await response.json();
-      console.log('API Success:', data);
-      return data;
-    } catch (error) {
-      console.error(`API call failed (attempt ${attempt + 1}):`, error);
+      const result = await response.json();
+      console.log(`API Success: ${options.method || 'GET'} ${fullUrl}`, result);
+      return result;
       
-      // If it's the last attempt or not a network error, throw
-      if (attempt === retries || !error.message.includes('fetch')) {
+    } catch (error) {
+      console.error(`API Error (attempt ${i + 1}):`, error.message);
+      
+      if (i === retries - 1) {
         throw error;
       }
       
       // Wait before retry (exponential backoff)
-      await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, attempt)));
+      await new Promise(resolve => setTimeout(resolve, Math.pow(2, i) * 1000));
     }
   }
 };
 
-// Data cleaning utilities
-const cleanPropertyData = (data) => {
-  const cleaned = { ...data };
-  
-  // Remove empty strings and convert to null
-  Object.keys(cleaned).forEach(key => {
-    if (cleaned[key] === '' || cleaned[key] === undefined) {
-      cleaned[key] = null;
-    }
-    
-    // Trim strings
-    if (typeof cleaned[key] === 'string' && cleaned[key] !== null) {
-      cleaned[key] = cleaned[key].trim();
-      if (cleaned[key] === '') {
-        cleaned[key] = null;
-      }
-    }
-  });
-  
-  // Ensure required fields are present
-  if (!cleaned.title) {
-    throw new Error('Title is required');
-  }
-  if (!cleaned.address) {
-    throw new Error('Address is required');
-  }
-  if (!cleaned.area || isNaN(parseInt(cleaned.area))) {
-    throw new Error('Valid area is required');
-  }
-  if (!cleaned.rooms || isNaN(parseInt(cleaned.rooms))) {
-    throw new Error('Valid number of rooms is required');
-  }
-  
-  // Convert numeric fields
-  cleaned.area = parseInt(cleaned.area);
-  cleaned.rooms = parseInt(cleaned.rooms);
-  if (cleaned.floor) cleaned.floor = parseInt(cleaned.floor);
-  if (cleaned.totalFloors) cleaned.totalFloors = parseInt(cleaned.totalFloors);
-  if (cleaned.yearBuilt) cleaned.yearBuilt = parseInt(cleaned.yearBuilt);
-  
-  // Convert price fields
-  if (cleaned.priceEur) cleaned.priceEur = parseFloat(cleaned.priceEur);
-  if (cleaned.monthlyRentEur) cleaned.monthlyRentEur = parseFloat(cleaned.monthlyRentEur);
-  
-  // Validate type-specific requirements
-  if (cleaned.propertyType === 'sale' && (!cleaned.priceEur || cleaned.priceEur <= 0)) {
-    throw new Error('Valid price is required for sale properties');
-  }
-  
-  if ((cleaned.propertyType === 'rent' || cleaned.propertyType === 'managed') && 
-      (!cleaned.monthlyRentEur || cleaned.monthlyRentEur <= 0)) {
-    throw new Error('Valid monthly rent is required for rental properties');
-  }
-  
-  return cleaned;
-};
-
-const cleanBuyerData = (data) => {
-  const cleaned = { ...data };
-  
-  // Remove empty strings and convert to null
-  Object.keys(cleaned).forEach(key => {
-    if (cleaned[key] === '' || cleaned[key] === undefined) {
-      cleaned[key] = null;
-    }
-    
-    // Trim strings
-    if (typeof cleaned[key] === 'string' && cleaned[key] !== null) {
-      cleaned[key] = cleaned[key].trim();
-      if (cleaned[key] === '') {
-        cleaned[key] = null;
-      }
-    }
-  });
-  
-  // Ensure required fields are present
-  if (!cleaned.firstName) {
-    throw new Error('First name is required');
-  }
-  if (!cleaned.lastName) {
-    throw new Error('Last name is required');
-  }
-  if (!cleaned.phone) {
-    throw new Error('Phone is required');
-  }
-  
-  // Validate email if provided
-  if (cleaned.email) {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(cleaned.email)) {
-      throw new Error('Invalid email format');
-    }
-  }
-  
-  // Convert numeric fields
-  if (cleaned.budgetMin) cleaned.budgetMin = parseFloat(cleaned.budgetMin);
-  if (cleaned.budgetMax) cleaned.budgetMax = parseFloat(cleaned.budgetMax);
-  if (cleaned.preferredRooms) cleaned.preferredRooms = parseInt(cleaned.preferredRooms);
-  
-  // Validate budget range
-  if (cleaned.budgetMin && cleaned.budgetMax && cleaned.budgetMin > cleaned.budgetMax) {
-    throw new Error('Minimum budget cannot be greater than maximum budget');
-  }
-  
-  // Handle preferred areas array
-  if (cleaned.preferredAreas && typeof cleaned.preferredAreas === 'string') {
-    cleaned.preferredAreas = cleaned.preferredAreas.split(',').map(area => area.trim()).filter(area => area);
-  }
-  
-  return cleaned;
-};
-
-// Enhanced Properties API
+// Properties API
 export const propertiesAPI = {
+  // Get all properties
   getAll: async (filters = {}) => {
-    try {
-      const queryParams = new URLSearchParams(filters).toString();
-      const endpoint = queryParams ? `/properties?${queryParams}` : '/properties';
-      return await apiCall(endpoint);
-    } catch (error) {
-      console.error('Failed to fetch properties:', error);
-      throw new Error(`Failed to load properties: ${error.message}`);
-    }
+    const queryParams = new URLSearchParams(cleanData(filters)).toString();
+    const url = `/properties${queryParams ? `?${queryParams}` : ''}`;
+    return apiCall(url);
   },
 
+  // Get property by ID
   getById: async (id) => {
-    try {
-      if (!id || isNaN(parseInt(id))) {
-        throw new Error('Invalid property ID');
-      }
-      return await apiCall(`/properties/${id}`);
-    } catch (error) {
-      console.error('Failed to fetch property:', error);
-      throw new Error(`Failed to load property: ${error.message}`);
-    }
+    return apiCall(`/properties/${id}`);
   },
 
-  create: async (data) => {
-    try {
-      const cleanedData = cleanPropertyData(data);
-      console.log('Creating property with cleaned data:', cleanedData);
-      return await apiCall('/properties', {
-        method: 'POST',
-        body: JSON.stringify(cleanedData),
-      });
-    } catch (error) {
-      console.error('Failed to create property:', error);
-      throw new Error(`Failed to create property: ${error.message}`);
+  // Create new property
+  create: async (propertyData) => {
+    const cleanedData = cleanData(propertyData);
+    const convertedData = convertTypes(cleanedData);
+    
+    // Client-side validation
+    if (!convertedData.title || !convertedData.propertyType) {
+      throw new Error('Заглавие и тип имот са задължителни полета');
     }
+    
+    if (convertedData.propertyType === 'sale' && !convertedData.priceEur) {
+      throw new Error('Цената е задължителна за имоти за продажба');
+    }
+    
+    if ((convertedData.propertyType === 'rent' || convertedData.propertyType === 'managed') && !convertedData.monthlyRentEur) {
+      throw new Error('Месечният наем е задължителен за имоти под наем');
+    }
+
+    return apiCall('/properties', {
+      method: 'POST',
+      body: JSON.stringify(convertedData)
+    });
   },
 
-  update: async (id, data) => {
-    try {
-      if (!id || isNaN(parseInt(id))) {
-        throw new Error('Invalid property ID');
-      }
-      const cleanedData = cleanPropertyData(data);
-      console.log('Updating property with cleaned data:', cleanedData);
-      return await apiCall(`/properties/${id}`, {
-        method: 'PUT',
-        body: JSON.stringify(cleanedData),
-      });
-    } catch (error) {
-      console.error('Failed to update property:', error);
-      throw new Error(`Failed to update property: ${error.message}`);
+  // Update property
+  update: async (id, propertyData) => {
+    const cleanedData = cleanData(propertyData);
+    const convertedData = convertTypes(cleanedData);
+    
+    // Client-side validation
+    if (convertedData.title && convertedData.title.length < 2) {
+      throw new Error('Заглавието трябва да бъде поне 2 символа');
     }
+
+    return apiCall(`/properties/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(convertedData)
+    });
   },
 
+  // Delete property
   delete: async (id) => {
-    try {
-      if (!id || isNaN(parseInt(id))) {
-        throw new Error('Invalid property ID');
-      }
-      return await apiCall(`/properties/${id}`, {
-        method: 'DELETE',
-      });
-    } catch (error) {
-      console.error('Failed to delete property:', error);
-      throw new Error(`Failed to delete property: ${error.message}`);
-    }
-  },
-};
-
-// Enhanced Buyers API
-export const buyersAPI = {
-  getAll: async (filters = {}) => {
-    try {
-      const queryParams = new URLSearchParams(filters).toString();
-      const endpoint = queryParams ? `/buyers?${queryParams}` : '/buyers';
-      return await apiCall(endpoint);
-    } catch (error) {
-      console.error('Failed to fetch buyers:', error);
-      throw new Error(`Failed to load buyers: ${error.message}`);
-    }
+    return apiCall(`/properties/${id}`, {
+      method: 'DELETE'
+    });
   },
 
-  getById: async (id) => {
-    try {
-      if (!id || isNaN(parseInt(id))) {
-        throw new Error('Invalid buyer ID');
-      }
-      return await apiCall(`/buyers/${id}`);
-    } catch (error) {
-      console.error('Failed to fetch buyer:', error);
-      throw new Error(`Failed to load buyer: ${error.message}`);
-    }
-  },
-
-  create: async (data) => {
-    try {
-      const cleanedData = cleanBuyerData(data);
-      console.log('Creating buyer with cleaned data:', cleanedData);
-      return await apiCall('/buyers', {
-        method: 'POST',
-        body: JSON.stringify(cleanedData),
-      });
-    } catch (error) {
-      console.error('Failed to create buyer:', error);
-      throw new Error(`Failed to create buyer: ${error.message}`);
-    }
-  },
-
-  update: async (id, data) => {
-    try {
-      if (!id || isNaN(parseInt(id))) {
-        throw new Error('Invalid buyer ID');
-      }
-      const cleanedData = cleanBuyerData(data);
-      console.log('Updating buyer with cleaned data:', cleanedData);
-      return await apiCall(`/buyers/${id}`, {
-        method: 'PUT',
-        body: JSON.stringify(cleanedData),
-      });
-    } catch (error) {
-      console.error('Failed to update buyer:', error);
-      throw new Error(`Failed to update buyer: ${error.message}`);
-    }
-  },
-
-  delete: async (id) => {
-    try {
-      if (!id || isNaN(parseInt(id))) {
-        throw new Error('Invalid buyer ID');
-      }
-      return await apiCall(`/buyers/${id}`, {
-        method: 'DELETE',
-      });
-    } catch (error) {
-      console.error('Failed to delete buyer:', error);
-      throw new Error(`Failed to delete buyer: ${error.message}`);
-    }
-  },
-};
-
-// Health check function
-export const healthCheck = async () => {
-  try {
-    const response = await apiCall('/health', {}, 0); // No retries for health check
-    return response;
-  } catch (error) {
-    console.error('Health check failed:', error);
-    throw new Error(`API is not responding: ${error.message}`);
+  // Search properties
+  search: async (query, filters = {}) => {
+    const searchParams = { 
+      q: query,
+      ...cleanData(filters)
+    };
+    const queryParams = new URLSearchParams(searchParams).toString();
+    return apiCall(`/search/properties?${queryParams}`);
   }
+};
+
+// Buyers API
+export const buyersAPI = {
+  // Get all buyers
+  getAll: async (filters = {}) => {
+    const queryParams = new URLSearchParams(cleanData(filters)).toString();
+    const url = `/buyers${queryParams ? `?${queryParams}` : ''}`;
+    return apiCall(url);
+  },
+
+  // Get buyer by ID
+  getById: async (id) => {
+    return apiCall(`/buyers/${id}`);
+  },
+
+  // Create new buyer
+  create: async (buyerData) => {
+    const cleanedData = cleanData(buyerData);
+    const convertedData = convertTypes(cleanedData);
+    
+    // Client-side validation
+    if (!convertedData.firstName || !convertedData.lastName) {
+      throw new Error('Име и фамилия са задължителни полета');
+    }
+    
+    if (!convertedData.phone) {
+      throw new Error('Телефонният номер е задължителен');
+    }
+    
+    if (convertedData.email && !convertedData.email.includes('@')) {
+      throw new Error('Невалиден имейл адрес');
+    }
+    
+    if (convertedData.budgetMin && convertedData.budgetMax && 
+        parseFloat(convertedData.budgetMin) > parseFloat(convertedData.budgetMax)) {
+      throw new Error('Минималният бюджет не може да бъде по-голям от максималния');
+    }
+
+    return apiCall('/buyers', {
+      method: 'POST',
+      body: JSON.stringify(convertedData)
+    });
+  },
+
+  // Update buyer
+  update: async (id, buyerData) => {
+    const cleanedData = cleanData(buyerData);
+    const convertedData = convertTypes(cleanedData);
+    
+    // Client-side validation
+    if (convertedData.email && !convertedData.email.includes('@')) {
+      throw new Error('Невалиден имейл адрес');
+    }
+    
+    if (convertedData.budgetMin && convertedData.budgetMax && 
+        parseFloat(convertedData.budgetMin) > parseFloat(convertedData.budgetMax)) {
+      throw new Error('Минималният бюджет не може да бъде по-голям от максималния');
+    }
+
+    return apiCall(`/buyers/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(convertedData)
+    });
+  },
+
+  // Delete buyer
+  delete: async (id) => {
+    return apiCall(`/buyers/${id}`, {
+      method: 'DELETE'
+    });
+  },
+
+  // Search buyers
+  search: async (query, filters = {}) => {
+    const searchParams = { 
+      q: query,
+      ...cleanData(filters)
+    };
+    const queryParams = new URLSearchParams(searchParams).toString();
+    return apiCall(`/search/buyers?${queryParams}`);
+  }
+};
+
+// Sellers API
+export const sellersAPI = {
+  getAll: async () => apiCall('/sellers'),
+  getById: async (id) => apiCall(`/sellers/${id}`),
+  create: async (sellerData) => {
+    const cleanedData = cleanData(sellerData);
+    return apiCall('/sellers', {
+      method: 'POST',
+      body: JSON.stringify(cleanedData)
+    });
+  },
+  update: async (id, sellerData) => {
+    const cleanedData = cleanData(sellerData);
+    return apiCall(`/sellers/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(cleanedData)
+    });
+  },
+  delete: async (id) => apiCall(`/sellers/${id}`, { method: 'DELETE' })
+};
+
+// Tasks API
+export const tasksAPI = {
+  getAll: async () => apiCall('/tasks'),
+  getById: async (id) => apiCall(`/tasks/${id}`),
+  create: async (taskData) => {
+    const cleanedData = cleanData(taskData);
+    return apiCall('/tasks', {
+      method: 'POST',
+      body: JSON.stringify(cleanedData)
+    });
+  },
+  update: async (id, taskData) => {
+    const cleanedData = cleanData(taskData);
+    return apiCall(`/tasks/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(cleanedData)
+    });
+  },
+  delete: async (id) => apiCall(`/tasks/${id}`, { method: 'DELETE' })
+};
+
+// Analytics API
+export const analyticsAPI = {
+  getDashboard: async (refresh = false) => {
+    const url = `/analytics/dashboard${refresh ? '?refresh=true' : ''}`;
+    return apiCall(url);
+  },
+  getKPIs: async () => apiCall('/analytics/kpis'),
+  getPropertyAnalytics: async (filters = {}) => {
+    const queryParams = new URLSearchParams(cleanData(filters)).toString();
+    return apiCall(`/analytics/properties${queryParams ? `?${queryParams}` : ''}`);
+  },
+  getPerformance: async (filters = {}) => {
+    const queryParams = new URLSearchParams(cleanData(filters)).toString();
+    return apiCall(`/analytics/performance${queryParams ? `?${queryParams}` : ''}`);
+  },
+  getTrends: async (filters = {}) => {
+    const queryParams = new URLSearchParams(cleanData(filters)).toString();
+    return apiCall(`/analytics/trends${queryParams ? `?${queryParams}` : ''}`);
+  },
+  getRevenue: async (period = '12') => {
+    return apiCall(`/analytics/revenue?period=${period}`);
+  }
+};
+
+// Search API
+export const searchAPI = {
+  properties: async (query, filters = {}) => {
+    return propertiesAPI.search(query, filters);
+  },
+  buyers: async (query, filters = {}) => {
+    return buyersAPI.search(query, filters);
+  },
+  global: async (query) => {
+    return apiCall(`/search/global?q=${encodeURIComponent(query)}`);
+  }
+};
+
+// Properties API Extensions
+propertiesAPI.archive = async (id) => {
+  return apiCall(`/properties/${id}/archive`, { method: 'PUT' });
+};
+
+propertiesAPI.unarchive = async (id) => {
+  return apiCall(`/properties/${id}/unarchive`, { method: 'PUT' });
+};
+
+propertiesAPI.assignSeller = async (id, sellerId) => {
+  return apiCall(`/properties/${id}/assign-seller`, {
+    method: 'PUT',
+    body: JSON.stringify({ sellerId })
+  });
+};
+
+propertiesAPI.assignBuyer = async (id, buyerId, type = 'buyer') => {
+  return apiCall(`/properties/${id}/assign-buyer`, {
+    method: 'PUT',
+    body: JSON.stringify({ buyerId, type })
+  });
+};
+
+propertiesAPI.incrementViewings = async (id) => {
+  return apiCall(`/properties/${id}/viewings`, { method: 'PUT' });
+};
+
+// Complete Sellers API
+export const sellersAPI = {
+  // Get all sellers
+  getAll: async (filters = {}) => {
+    const queryParams = new URLSearchParams(cleanData(filters)).toString();
+    const url = `/sellers${queryParams ? `?${queryParams}` : ''}`;
+    return apiCall(url);
+  },
+
+  // Get seller by ID
+  getById: async (id) => {
+    return apiCall(`/sellers/${id}`);
+  },
+
+  // Create new seller
+  create: async (sellerData) => {
+    const cleanedData = cleanData(sellerData);
+    const convertedData = convertTypes(cleanedData);
+    
+    // Client-side validation
+    if (!convertedData.firstName || !convertedData.lastName) {
+      throw new Error('Име и фамилия са задължителни полета');
+    }
+    
+    if (!convertedData.phone) {
+      throw new Error('Телефонният номер е задължителен');
+    }
+    
+    if (convertedData.email && !convertedData.email.includes('@')) {
+      throw new Error('Невалиден имейл адрес');
+    }
+
+    return apiCall('/sellers', {
+      method: 'POST',
+      body: JSON.stringify(convertedData)
+    });
+  },
+
+  // Update seller
+  update: async (id, sellerData) => {
+    const cleanedData = cleanData(sellerData);
+    const convertedData = convertTypes(cleanedData);
+    
+    // Client-side validation
+    if (convertedData.email && !convertedData.email.includes('@')) {
+      throw new Error('Невалиден имейл адрес');
+    }
+
+    return apiCall(`/sellers/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(convertedData)
+    });
+  },
+
+  // Delete seller
+  delete: async (id) => {
+    return apiCall(`/sellers/${id}`, { method: 'DELETE' });
+  },
+
+  // Archive seller
+  archive: async (id) => {
+    return apiCall(`/sellers/${id}/archive`, { method: 'PUT' });
+  },
+
+  // Assign agent to seller
+  assignAgent: async (id, agentId) => {
+    return apiCall(`/sellers/${id}/assign-agent`, {
+      method: 'PUT',
+      body: JSON.stringify({ agentId })
+    });
+  },
+
+  // Get seller properties
+  getProperties: async (id) => {
+    return apiCall(`/sellers/${id}/properties`);
+  }
+};
+
+// Complete Tasks API
+export const tasksAPI = {
+  // Get all tasks
+  getAll: async (filters = {}) => {
+    const queryParams = new URLSearchParams(cleanData(filters)).toString();
+    const url = `/tasks${queryParams ? `?${queryParams}` : ''}`;
+    return apiCall(url);
+  },
+
+  // Get task by ID
+  getById: async (id) => {
+    return apiCall(`/tasks/${id}`);
+  },
+
+  // Create new task
+  create: async (taskData) => {
+    const cleanedData = cleanData(taskData);
+    
+    // Client-side validation
+    if (!cleanedData.title || !cleanedData.description) {
+      throw new Error('Заглавие и описание са задължителни полета');
+    }
+
+    return apiCall('/tasks', {
+      method: 'POST',
+      body: JSON.stringify(cleanedData)
+    });
+  },
+
+  // Update task
+  update: async (id, taskData) => {
+    const cleanedData = cleanData(taskData);
+    return apiCall(`/tasks/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(cleanedData)
+    });
+  },
+
+  // Delete task
+  delete: async (id) => {
+    return apiCall(`/tasks/${id}`, { method: 'DELETE' });
+  },
+
+  // Complete task
+  complete: async (id, notes = '') => {
+    return apiCall(`/tasks/${id}/complete`, {
+      method: 'PUT',
+      body: JSON.stringify({ notes })
+    });
+  },
+
+  // Reopen task
+  reopen: async (id) => {
+    return apiCall(`/tasks/${id}/reopen`, { method: 'PUT' });
+  },
+
+  // Get overdue tasks
+  getOverdue: async (agentId = null) => {
+    const params = agentId ? `?agentId=${agentId}` : '';
+    return apiCall(`/tasks/overdue/list${params}`);
+  },
+
+  // Get upcoming tasks
+  getUpcoming: async (agentId = null, days = 7) => {
+    const params = new URLSearchParams();
+    if (agentId) params.append('agentId', agentId);
+    params.append('days', days);
+    return apiCall(`/tasks/upcoming/list?${params.toString()}`);
+  },
+
+  // Get tasks summary
+  getSummary: async (agentId = null) => {
+    const params = agentId ? `?agentId=${agentId}` : '';
+    return apiCall(`/tasks/summary/stats${params}`);
+  }
+};
+
+// Export default object with all APIs
+export default {
+  properties: propertiesAPI,
+  buyers: buyersAPI,
+  sellers: sellersAPI,
+  tasks: tasksAPI,
+  analytics: analyticsAPI,
+  search: searchAPI
 };
