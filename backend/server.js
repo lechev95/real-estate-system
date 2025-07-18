@@ -1,371 +1,530 @@
-// backend/server.js
+// backend/server.js - Complete with Authentication
 const express = require('express');
 const cors = require('cors');
-const path = require('path');
+const sqlite3 = require('sqlite3').verbose();
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+const JWT_SECRET = process.env.JWT_SECRET || 'myucons_secret_key_2025';
 
-// Enhanced CORS configuration
-const corsOptions = {
-  origin: [
-    'http://localhost:3000',
-    'http://localhost:5173',
-    'https://real-estate-crm-frontend.onrender.com',
-    /\.vercel\.app$/,
-    /\.netlify\.app$/
-  ],
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
-};
-
-app.use(cors(corsOptions));
-
-// Enhanced middleware with better error handling
-app.use(express.json({ 
-  limit: '10mb',
-  strict: true
+// Middleware
+app.use(cors({
+  origin: ['http://localhost:3000', 'https://real-estate-crm-frontend.onrender.com'],
+  credentials: true
 }));
+app.use(express.json());
 
-app.use(express.urlencoded({ 
-  extended: true,
-  limit: '10mb'
-}));
+// Database initialization
+const db = new sqlite3.Database(':memory:');
 
-// Request logging middleware
-app.use((req, res, next) => {
-  const timestamp = new Date().toISOString();
-  console.log(`${timestamp} - ${req.method} ${req.path} - IP: ${req.ip}`);
+// Initialize database tables
+db.serialize(() => {
+  // Users table
+  db.run(`CREATE TABLE users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT UNIQUE NOT NULL,
+    password TEXT NOT NULL,
+    firstName TEXT NOT NULL,
+    lastName TEXT NOT NULL,
+    role TEXT DEFAULT 'agent',
+    isActive BOOLEAN DEFAULT 1,
+    createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+
+  // Properties table
+  db.run(`CREATE TABLE properties (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    description TEXT,
+    price DECIMAL(12,2),
+    location TEXT,
+    type TEXT,
+    bedrooms INTEGER,
+    bathrooms INTEGER,
+    area DECIMAL(10,2),
+    status TEXT DEFAULT 'available',
+    isArchived BOOLEAN DEFAULT 0,
+    createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+
+  // Buyers table
+  db.run(`CREATE TABLE buyers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    firstName TEXT NOT NULL,
+    lastName TEXT NOT NULL,
+    email TEXT,
+    phone TEXT,
+    budget DECIMAL(12,2),
+    preferredLocation TEXT,
+    notes TEXT,
+    isArchived BOOLEAN DEFAULT 0,
+    createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+
+  // Sellers table
+  db.run(`CREATE TABLE sellers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    firstName TEXT NOT NULL,
+    lastName TEXT NOT NULL,
+    email TEXT,
+    phone TEXT,
+    propertyAddress TEXT,
+    askingPrice DECIMAL(12,2),
+    commission DECIMAL(5,2),
+    notes TEXT,
+    isArchived BOOLEAN DEFAULT 0,
+    createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+
+  // Tasks table
+  db.run(`CREATE TABLE tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    description TEXT,
+    dueDate DATE,
+    priority TEXT DEFAULT 'medium',
+    status TEXT DEFAULT 'pending',
+    assignedTo TEXT,
+    relatedType TEXT,
+    relatedId INTEGER,
+    completedAt DATETIME,
+    createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+
+  // Create default admin user
+  const adminPassword = bcrypt.hashSync('admin123', 10);
+  const agentPassword = bcrypt.hashSync('agent123', 10);
   
-  // Log request body for POST/PUT requests (excluding sensitive data)
-  if ((req.method === 'POST' || req.method === 'PUT') && req.body) {
-    const sanitizedBody = { ...req.body };
-    // Remove sensitive fields if any
-    delete sanitizedBody.password;
-    delete sanitizedBody.token;
-    console.log(`Request body:`, sanitizedBody);
+  db.run(`INSERT INTO users (email, password, firstName, lastName, role) VALUES 
+    ('admin@myucons.bg', ?, 'Админ', 'Потребител', 'admin'),
+    ('agent@myucons.bg', ?, 'Агент', 'Потребител', 'agent')`,
+    [adminPassword, agentPassword]
+  );
+
+  // Sample data
+  db.run(`INSERT INTO properties (title, description, price, location, type, bedrooms, bathrooms, area) VALUES 
+    ('Луксозен апартамент в Лозенец', 'Просторен 3-стаен апартамент с гледка към парка', 450000, 'Лозенец, София', 'Апартамент', 3, 2, 120.5),
+    ('Семейна къща в Бояна', 'Двуетажна къща с двор и гараж', 680000, 'Бояна, София', 'Къща', 4, 3, 200.0),
+    ('Офис в центъра', 'Представителен офис в бизнес сграда', 320000, 'Център, София', 'Офис', 0, 1, 85.0)`);
+
+  db.run(`INSERT INTO buyers (firstName, lastName, email, phone, budget, preferredLocation) VALUES 
+    ('Иван', 'Петров', 'ivan.petrov@email.com', '+359888123456', 400000, 'Лозенец'),
+    ('Мария', 'Георгиева', 'maria.georgieva@email.com', '+359888654321', 500000, 'Витоша'),
+    ('Петър', 'Димитров', 'petar.dimitrov@email.com', '+359888987654', 300000, 'Студентски град')`);
+
+  db.run(`INSERT INTO sellers (firstName, lastName, email, phone, propertyAddress, askingPrice, commission) VALUES 
+    ('Анна', 'Стоянова', 'anna.stoyanova@email.com', '+359888111222', 'ул. Витоша 100', 480000, 3.0),
+    ('Димитър', 'Николов', 'dimitar.nikolov@email.com', '+359888333444', 'бул. Васил Левски 45', 350000, 2.5),
+    ('Елена', 'Василева', 'elena.vasileva@email.com', '+359888555666', 'кв. Дружба 2', 280000, 2.0)`);
+
+  db.run(`INSERT INTO tasks (title, description, dueDate, priority, assignedTo, relatedType, relatedId) VALUES 
+    ('Оглед на имот в Лозенец', 'Организиране на оглед с клиент Иван Петров', '2025-07-20', 'high', 'Агент Потребител', 'property', 1),
+    ('Подготовка на документи', 'Подготовка на документи за продажба', '2025-07-22', 'medium', 'Агент Потребител', 'seller', 1),
+    ('Следващ контакт с купувач', 'Проследяване на интереса на Мария Георгиева', '2025-07-25', 'low', 'Агент Потребител', 'buyer', 2)`);
+});
+
+// Authentication middleware
+const authenticateToken = (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+
+  if (!token) {
+    return res.status(401).json({ error: 'Access token required' });
   }
-  
-  next();
-});
 
-// Security headers middleware
-app.use((req, res, next) => {
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'DENY');
-  res.setHeader('X-XSS-Protection', '1; mode=block');
-  next();
-});
-
-// Health check endpoint with detailed status
-app.get('/health', (req, res) => {
-  const healthStatus = {
-    status: 'healthy',
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-    environment: process.env.NODE_ENV || 'development',
-    version: '1.0.0',
-    routes: {
-      properties: '/api/properties',
-      buyers: '/api/buyers',
-      sellers: '/api/sellers',
-      tasks: '/api/tasks',
-      analytics: '/api/analytics',
-      search: '/api/search',
-      auth: '/api/auth'
-    },
-    memory: {
-      used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + ' MB',
-      total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024) + ' MB'
+  jwt.verify(token, JWT_SECRET, (err, user) => {
+    if (err) {
+      return res.status(403).json({ error: 'Invalid or expired token' });
     }
-  };
-  
-  console.log('✅ Health check passed');
-  res.json(healthStatus);
-});
-
-// API Routes with error handling wrappers
-const asyncHandler = (fn) => (req, res, next) => {
-  Promise.resolve(fn(req, res, next)).catch(next);
+    req.user = user;
+    next();
+  });
 };
 
-// Import and mount routes with comprehensive error handling
-try {
-  // Properties routes
-  const propertiesRoutes = require('./routes/properties');
-  app.use('/api/properties', asyncHandler(async (req, res, next) => {
-    propertiesRoutes(req, res, next);
-  }));
-  console.log('✅ Properties routes loaded');
-} catch (error) {
-  console.warn('⚠️ Properties routes not available:', error.message);
-}
+// Admin only middleware
+const requireAdmin = (req, res, next) => {
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+  next();
+};
 
-try {
-  // Buyers routes
-  const buyersRoutes = require('./routes/buyers');
-  app.use('/api/buyers', asyncHandler(async (req, res, next) => {
-    buyersRoutes(req, res, next);
-  }));
-  console.log('✅ Buyers routes loaded');
-} catch (error) {
-  console.warn('⚠️ Buyers routes not available:', error.message);
-}
+// Import auth routes
+const authRoutes = require('./routes/auth');
+app.use('/api/auth', authRoutes);
 
-try {
-  // Sellers routes
-  const sellersRoutes = require('./routes/sellers');
-  app.use('/api/sellers', asyncHandler(async (req, res, next) => {
-    sellersRoutes(req, res, next);
-  }));
-  console.log('✅ Sellers routes loaded');
-} catch (error) {
-  console.warn('⚠️ Sellers routes not available:', error.message);
-}
+// Properties endpoints
+app.get('/api/properties', authenticateToken, (req, res) => {
+  db.all('SELECT * FROM properties ORDER BY createdAt DESC', (err, rows) => {
+    if (err) {
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    res.json({ properties: rows });
+  });
+});
 
-try {
-  // Tasks routes
-  const tasksRoutes = require('./routes/tasks');
-  app.use('/api/tasks', asyncHandler(async (req, res, next) => {
-    tasksRoutes(req, res, next);
-  }));
-  console.log('✅ Tasks routes loaded');
-} catch (error) {
-  console.warn('⚠️ Tasks routes not available:', error.message);
-}
-
-try {
-  // Analytics routes
-  const analyticsRoutes = require('./routes/analytics');
-  app.use('/api/analytics', asyncHandler(async (req, res, next) => {
-    analyticsRoutes(req, res, next);
-  }));
-  console.log('✅ Analytics routes loaded');
-} catch (error) {
-  console.warn('⚠️ Analytics routes not available:', error.message);
-}
-
-try {
-  // Search routes
-  const searchRoutes = require('./routes/search');
-  app.use('/api/search', asyncHandler(async (req, res, next) => {
-    searchRoutes(req, res, next);
-  }));
-  console.log('✅ Search routes loaded');
-} catch (error) {
-  console.warn('⚠️ Search routes not available:', error.message);
-}
-
-try {
-  // Auth routes
-  const authRoutes = require('./routes/auth');
-  app.use('/api/auth', asyncHandler(async (req, res, next) => {
-    authRoutes(req, res, next);
-  }));
-  console.log('✅ Auth routes loaded');
-} catch (error) {
-  console.warn('⚠️ Auth routes not available:', error.message);
-}
-
-// API routes listing endpoint
-app.get('/api/routes', (req, res) => {
-  res.json({
-    message: 'Available API routes',
-    routes: [
-      {
-        path: '/api/properties',
-        methods: ['GET', 'POST', 'PUT', 'DELETE'],
-        description: 'Property management endpoints'
-      },
-      {
-        path: '/api/buyers',
-        methods: ['GET', 'POST', 'PUT', 'DELETE'],
-        description: 'Buyer management endpoints'
-      },
-      {
-        path: '/api/sellers',
-        methods: ['GET', 'POST', 'PUT', 'DELETE'],
-        description: 'Seller management endpoints'
-      },
-      {
-        path: '/api/tasks',
-        methods: ['GET', 'POST', 'PUT', 'DELETE'],
-        description: 'Task management endpoints'
-      },
-      {
-        path: '/api/analytics',
-        methods: ['GET'],
-        description: 'Analytics and reporting endpoints'
-      },
-      {
-        path: '/api/search',
-        methods: ['GET', 'POST'],
-        description: 'Search and filtering endpoints'
-      },
-      {
-        path: '/api/auth',
-        methods: ['GET', 'POST', 'PUT'],
-        description: 'Authentication endpoints'
+app.post('/api/properties', authenticateToken, (req, res) => {
+  const { title, description, price, location, type, bedrooms, bathrooms, area } = req.body;
+  
+  db.run(
+    `INSERT INTO properties (title, description, price, location, type, bedrooms, bathrooms, area) 
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [title, description, price, location, type, bedrooms, bathrooms, area],
+    function(err) {
+      if (err) {
+        res.status(500).json({ error: err.message });
+        return;
       }
-    ],
-    health: '/health',
-    version: '1.0.0'
+      
+      db.get('SELECT * FROM properties WHERE id = ?', [this.lastID], (err, row) => {
+        if (err) {
+          res.status(500).json({ error: err.message });
+          return;
+        }
+        res.status(201).json({ property: row });
+      });
+    }
+  );
+});
+
+app.put('/api/properties/:id', authenticateToken, (req, res) => {
+  const { title, description, price, location, type, bedrooms, bathrooms, area } = req.body;
+  const { id } = req.params;
+  
+  db.run(
+    `UPDATE properties SET 
+     title = ?, description = ?, price = ?, location = ?, type = ?, 
+     bedrooms = ?, bathrooms = ?, area = ?, updatedAt = CURRENT_TIMESTAMP 
+     WHERE id = ?`,
+    [title, description, price, location, type, bedrooms, bathrooms, area, id],
+    function(err) {
+      if (err) {
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      
+      db.get('SELECT * FROM properties WHERE id = ?', [id], (err, row) => {
+        if (err) {
+          res.status(500).json({ error: err.message });
+          return;
+        }
+        res.json({ property: row });
+      });
+    }
+  );
+});
+
+app.put('/api/properties/:id/archive', authenticateToken, (req, res) => {
+  const { id } = req.params;
+  
+  db.run(
+    'UPDATE properties SET isArchived = 1, updatedAt = CURRENT_TIMESTAMP WHERE id = ?',
+    [id],
+    function(err) {
+      if (err) {
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      res.json({ message: 'Property archived successfully' });
+    }
+  );
+});
+
+app.delete('/api/properties/:id', authenticateToken, (req, res) => {
+  const { id } = req.params;
+  
+  db.run('DELETE FROM properties WHERE id = ?', [id], function(err) {
+    if (err) {
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    res.json({ message: 'Property deleted successfully' });
   });
 });
 
-// Root endpoint
-app.get('/', (req, res) => {
-  res.json({
-    message: 'Real Estate CRM API',
-    version: '1.0.0',
-    status: 'running',
-    endpoints: {
-      health: '/health',
-      routes: '/api/routes',
-      properties: '/api/properties',
-      buyers: '/api/buyers',
-      sellers: '/api/sellers',
-      tasks: '/api/tasks',
-      analytics: '/api/analytics',
-      search: '/api/search',
-      auth: '/api/auth'
-    },
-    documentation: 'Visit /api/routes for detailed endpoint information'
+// Buyers endpoints
+app.get('/api/buyers', authenticateToken, (req, res) => {
+  db.all('SELECT * FROM buyers ORDER BY createdAt DESC', (err, rows) => {
+    if (err) {
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    res.json({ buyers: rows });
   });
 });
 
-// Catch-all for API routes that don't exist
-app.all('/api/*', (req, res) => {
-  res.status(404).json({
-    success: false,
-    error: 'API endpoint not found',
-    message: `The endpoint ${req.method} ${req.path} does not exist`,
-    availableRoutes: '/api/routes',
-    requestedPath: req.path,
-    method: req.method
+app.post('/api/buyers', authenticateToken, (req, res) => {
+  const { firstName, lastName, email, phone, budget, preferredLocation, notes } = req.body;
+  
+  db.run(
+    `INSERT INTO buyers (firstName, lastName, email, phone, budget, preferredLocation, notes) 
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [firstName, lastName, email, phone, budget, preferredLocation, notes],
+    function(err) {
+      if (err) {
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      
+      db.get('SELECT * FROM buyers WHERE id = ?', [this.lastID], (err, row) => {
+        if (err) {
+          res.status(500).json({ error: err.message });
+          return;
+        }
+        res.status(201).json({ buyer: row });
+      });
+    }
+  );
+});
+
+app.put('/api/buyers/:id', authenticateToken, (req, res) => {
+  const { firstName, lastName, email, phone, budget, preferredLocation, notes } = req.body;
+  const { id } = req.params;
+  
+  db.run(
+    `UPDATE buyers SET 
+     firstName = ?, lastName = ?, email = ?, phone = ?, budget = ?, 
+     preferredLocation = ?, notes = ?, updatedAt = CURRENT_TIMESTAMP 
+     WHERE id = ?`,
+    [firstName, lastName, email, phone, budget, preferredLocation, notes, id],
+    function(err) {
+      if (err) {
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      
+      db.get('SELECT * FROM buyers WHERE id = ?', [id], (err, row) => {
+        if (err) {
+          res.status(500).json({ error: err.message });
+          return;
+        }
+        res.json({ buyer: row });
+      });
+    }
+  );
+});
+
+app.put('/api/buyers/:id/archive', authenticateToken, (req, res) => {
+  const { id } = req.params;
+  
+  db.run(
+    'UPDATE buyers SET isArchived = 1, updatedAt = CURRENT_TIMESTAMP WHERE id = ?',
+    [id],
+    function(err) {
+      if (err) {
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      res.json({ message: 'Buyer archived successfully' });
+    }
+  );
+});
+
+app.delete('/api/buyers/:id', authenticateToken, (req, res) => {
+  const { id } = req.params;
+  
+  db.run('DELETE FROM buyers WHERE id = ?', [id], function(err) {
+    if (err) {
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    res.json({ message: 'Buyer deleted successfully' });
   });
 });
 
-// Serve static files from React build (for production)
-if (process.env.NODE_ENV === 'production') {
-  const buildPath = path.join(__dirname, '..', 'frontend', 'dist');
-  app.use(express.static(buildPath));
-  
-  // Handle React routing
-  app.get('*', (req, res) => {
-    res.sendFile(path.join(buildPath, 'index.html'));
-  });
-  
-  console.log('📦 Serving static files from:', buildPath);
-}
-
-// JSON parsing error handler
-app.use((error, req, res, next) => {
-  if (error instanceof SyntaxError && error.status === 400 && 'body' in error) {
-    console.error('❌ JSON parsing error:', error.message);
-    return res.status(400).json({
-      success: false,
-      error: 'Invalid JSON format',
-      message: 'Please check your request body format',
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined
-    });
-  }
-  next(error);
-});
-
-// Enhanced error handling middleware
-app.use((error, req, res, next) => {
-  const timestamp = new Date().toISOString();
-  console.error(`${timestamp} - Error in ${req.method} ${req.path}:`, error);
-  
-  // Default error status
-  let status = error.status || error.statusCode || 500;
-  let message = error.message || 'Internal server error';
-  
-  // Handle specific error types
-  if (error.name === 'ValidationError') {
-    status = 400;
-    message = 'Validation failed';
-  } else if (error.name === 'CastError') {
-    status = 400;
-    message = 'Invalid data format';
-  } else if (error.code === 'ECONNREFUSED') {
-    status = 503;
-    message = 'Service temporarily unavailable';
-  } else if (error.code === 'ENOTFOUND') {
-    status = 502;
-    message = 'External service not found';
-  }
-  
-  // Don't expose internal errors in production
-  if (status === 500 && process.env.NODE_ENV === 'production') {
-    message = 'Internal server error';
-  }
-  
-  const errorResponse = {
-    success: false,
-    error: message,
-    timestamp,
-    path: req.path,
-    method: req.method,
-    status
-  };
-  
-  // Include stack trace and details only in development
-  if (process.env.NODE_ENV === 'development') {
-    errorResponse.details = error.message;
-    errorResponse.stack = error.stack;
-  }
-  
-  res.status(status).json(errorResponse);
-});
-
-// 404 handler for non-API routes
-app.use((req, res) => {
-  res.status(404).json({
-    success: false,
-    error: 'Route not found',
-    message: `The route ${req.method} ${req.path} does not exist`,
-    availableEndpoints: {
-      api: '/api/routes',
-      health: '/health'
-    },
-    timestamp: new Date().toISOString()
+// Sellers endpoints
+app.get('/api/sellers', authenticateToken, (req, res) => {
+  db.all('SELECT * FROM sellers ORDER BY createdAt DESC', (err, rows) => {
+    if (err) {
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    res.json({ sellers: rows });
   });
 });
 
-// Graceful shutdown handling
-process.on('SIGTERM', () => {
-  console.log('🔄 SIGTERM received, shutting down gracefully...');
-  process.exit(0);
+app.post('/api/sellers', authenticateToken, (req, res) => {
+  const { firstName, lastName, email, phone, propertyAddress, askingPrice, commission, notes } = req.body;
+  
+  db.run(
+    `INSERT INTO sellers (firstName, lastName, email, phone, propertyAddress, askingPrice, commission, notes) 
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [firstName, lastName, email, phone, propertyAddress, askingPrice, commission, notes],
+    function(err) {
+      if (err) {
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      
+      db.get('SELECT * FROM sellers WHERE id = ?', [this.lastID], (err, row) => {
+        if (err) {
+          res.status(500).json({ error: err.message });
+          return;
+        }
+        res.status(201).json({ seller: row });
+      });
+    }
+  );
 });
 
-process.on('SIGINT', () => {
-  console.log('🔄 SIGINT received, shutting down gracefully...');
-  process.exit(0);
+app.put('/api/sellers/:id', authenticateToken, (req, res) => {
+  const { firstName, lastName, email, phone, propertyAddress, askingPrice, commission, notes } = req.body;
+  const { id } = req.params;
+  
+  db.run(
+    `UPDATE sellers SET 
+     firstName = ?, lastName = ?, email = ?, phone = ?, propertyAddress = ?, 
+     askingPrice = ?, commission = ?, notes = ?, updatedAt = CURRENT_TIMESTAMP 
+     WHERE id = ?`,
+    [firstName, lastName, email, phone, propertyAddress, askingPrice, commission, notes, id],
+    function(err) {
+      if (err) {
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      
+      db.get('SELECT * FROM sellers WHERE id = ?', [id], (err, row) => {
+        if (err) {
+          res.status(500).json({ error: err.message });
+          return;
+        }
+        res.json({ seller: row });
+      });
+    }
+  );
 });
 
-process.on('uncaughtException', (error) => {
-  console.error('💥 Uncaught Exception:', error);
-  process.exit(1);
+app.put('/api/sellers/:id/archive', authenticateToken, (req, res) => {
+  const { id } = req.params;
+  
+  db.run(
+    'UPDATE sellers SET isArchived = 1, updatedAt = CURRENT_TIMESTAMP WHERE id = ?',
+    [id],
+    function(err) {
+      if (err) {
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      res.json({ message: 'Seller archived successfully' });
+    }
+  );
 });
 
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('💥 Unhandled Rejection at:', promise, 'reason:', reason);
-  process.exit(1);
+app.delete('/api/sellers/:id', authenticateToken, (req, res) => {
+  const { id } = req.params;
+  
+  db.run('DELETE FROM sellers WHERE id = ?', [id], function(err) {
+    if (err) {
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    res.json({ message: 'Seller deleted successfully' });
+  });
+});
+
+// Tasks endpoints
+app.get('/api/tasks', authenticateToken, (req, res) => {
+  db.all('SELECT * FROM tasks ORDER BY dueDate ASC, createdAt DESC', (err, rows) => {
+    if (err) {
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    res.json({ tasks: rows });
+  });
+});
+
+app.post('/api/tasks', authenticateToken, (req, res) => {
+  const { title, description, dueDate, priority, assignedTo, relatedType, relatedId } = req.body;
+  
+  db.run(
+    `INSERT INTO tasks (title, description, dueDate, priority, assignedTo, relatedType, relatedId) 
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [title, description, dueDate, priority, assignedTo, relatedType, relatedId],
+    function(err) {
+      if (err) {
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      
+      db.get('SELECT * FROM tasks WHERE id = ?', [this.lastID], (err, row) => {
+        if (err) {
+          res.status(500).json({ error: err.message });
+          return;
+        }
+        res.status(201).json({ task: row });
+      });
+    }
+  );
+});
+
+app.put('/api/tasks/:id', authenticateToken, (req, res) => {
+  const { title, description, dueDate, priority, assignedTo, relatedType, relatedId } = req.body;
+  const { id } = req.params;
+  
+  db.run(
+    `UPDATE tasks SET 
+     title = ?, description = ?, dueDate = ?, priority = ?, assignedTo = ?, 
+     relatedType = ?, relatedId = ?, updatedAt = CURRENT_TIMESTAMP 
+     WHERE id = ?`,
+    [title, description, dueDate, priority, assignedTo, relatedType, relatedId, id],
+    function(err) {
+      if (err) {
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      
+      db.get('SELECT * FROM tasks WHERE id = ?', [id], (err, row) => {
+        if (err) {
+          res.status(500).json({ error: err.message });
+          return;
+        }
+        res.json({ task: row });
+      });
+    }
+  );
+});
+
+app.put('/api/tasks/:id/complete', authenticateToken, (req, res) => {
+  const { id } = req.params;
+  
+  db.run(
+    'UPDATE tasks SET status = "completed", completedAt = CURRENT_TIMESTAMP, updatedAt = CURRENT_TIMESTAMP WHERE id = ?',
+    [id],
+    function(err) {
+      if (err) {
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      res.json({ message: 'Task completed successfully' });
+    }
+  );
+});
+
+app.delete('/api/tasks/:id', authenticateToken, (req, res) => {
+  const { id } = req.params;
+  
+  db.run('DELETE FROM tasks WHERE id = ?', [id], function(err) {
+    if (err) {
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    res.json({ message: 'Task deleted successfully' });
+  });
+});
+
+// Health check
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'OK', message: 'М&Ю Консулт CRM API is running' });
 });
 
 // Start server
 app.listen(PORT, () => {
-  console.log('🚀 Real Estate CRM API Server Started');
-  console.log('📍 Server Details:');
-  console.log(`   ✅ Port: ${PORT}`);
-  console.log(`   ✅ Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`   ✅ Health check: http://localhost:${PORT}/health`);
-  console.log(`   ✅ API routes: http://localhost:${PORT}/api/routes`);
-  console.log(`   ✅ Base URL: http://localhost:${PORT}`);
-  console.log('📱 Ready to accept requests!');
+  console.log(`М&Ю Консулт CRM API running on port ${PORT}`);
 });
-
-module.exports = app;
