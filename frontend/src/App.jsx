@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext.jsx';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
 import UserManagement from './components/UserManagement.jsx';
+import Properties from './components/Properties.jsx';
 
 // Main CRM Component with Authentication
 const AuthenticatedCRM = () => {
