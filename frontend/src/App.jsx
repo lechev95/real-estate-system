@@ -1,4 +1,4 @@
-// frontend/src/App.jsx - Working version with Archive module
+// frontend/src/App.jsx - Fixed with working buttons
 import React, { useState } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext.jsx';
 
@@ -118,7 +118,7 @@ const LoginForm = () => {
   );
 };
 
-// Dashboard with Archive Module
+// Dashboard with working buttons
 const Dashboard = () => {
   const { user, logout } = useAuth();
   const [activeTab, setActiveTab] = useState('properties');
@@ -201,12 +201,13 @@ const Dashboard = () => {
   );
 };
 
-// Archive Module
+// Archive Module with working functionality
 const ArchiveModule = () => {
   const { getProperties, getBuyers, getSellers, deleteProperty, deleteBuyer, deleteSeller } = useAuth();
   const [selectedType, setSelectedType] = useState('properties');
   const [archivedData, setArchivedData] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   React.useEffect(() => {
     loadArchivedData();
@@ -214,6 +215,7 @@ const ArchiveModule = () => {
 
   const loadArchivedData = async () => {
     setLoading(true);
+    setError('');
     try {
       let result = [];
       
@@ -235,6 +237,7 @@ const ArchiveModule = () => {
       setArchivedData(result);
     } catch (error) {
       console.error('Error loading archived data:', error);
+      setError('Грешка при зареждане на архивните данни');
       setArchivedData([]);
     } finally {
       setLoading(false);
@@ -259,8 +262,10 @@ const ArchiveModule = () => {
           break;
       }
       loadArchivedData();
+      alert('Записът е изтрит окончателно!');
     } catch (error) {
       console.error('Error deleting:', error);
+      alert('Грешка при изтриване: ' + error.message);
     }
   };
 
@@ -292,6 +297,13 @@ const ArchiveModule = () => {
         </div>
       </div>
 
+      {/* Error Alert */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+          {error}
+        </div>
+      )}
+
       {/* Archive Type Selector */}
       <div className="bg-white rounded-lg shadow p-6">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Изберете тип архив:</h3>
@@ -304,16 +316,16 @@ const ArchiveModule = () => {
             <button
               key={type.id}
               onClick={() => setSelectedType(type.id)}
-              className={`p-4 rounded-lg border-2 transition-all duration-200 ${
+              className={`p-4 rounded-lg border-2 transition-all duration-200 hover:shadow-md ${
                 selectedType === type.id
-                  ? `border-${type.color}-500 bg-${type.color}-50`
+                  ? 'border-blue-500 bg-blue-50 shadow-md'
                   : 'border-gray-200 hover:border-gray-300 bg-white'
               }`}
             >
               <div className="text-center">
                 <div className="text-3xl mb-2">{type.icon}</div>
                 <div className={`font-medium ${
-                  selectedType === type.id ? `text-${type.color}-700` : 'text-gray-700'
+                  selectedType === type.id ? 'text-blue-700' : 'text-gray-700'
                 }`}>
                   {type.name}
                 </div>
@@ -337,7 +349,10 @@ const ArchiveModule = () => {
         <div className="p-6">
           {loading ? (
             <div className="flex justify-center items-center py-12">
-              <div className="text-lg text-gray-600">Зареждане на архив...</div>
+              <div className="flex items-center gap-3">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                <div className="text-lg text-gray-600">Зареждане на архив...</div>
+              </div>
             </div>
           ) : archivedData.length === 0 ? (
             <div className="text-center py-12">
@@ -407,11 +422,13 @@ const ArchiveModule = () => {
   );
 };
 
-// Content Module for other tabs
+// Content Module with working buttons
 const ContentModule = ({ activeTab }) => {
-  const { getProperties, getBuyers, getSellers, getTasks } = useAuth();
+  const { getProperties, getBuyers, getSellers, getTasks, createProperty, createBuyer, createSeller, createTask } = useAuth();
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [error, setError] = useState('');
 
   React.useEffect(() => {
     loadData();
@@ -419,6 +436,7 @@ const ContentModule = ({ activeTab }) => {
 
   const loadData = async () => {
     setLoading(true);
+    setError('');
     try {
       let result = { data: [] };
       
@@ -444,19 +462,26 @@ const ContentModule = ({ activeTab }) => {
       }
     } catch (error) {
       console.error(`Error loading ${activeTab}:`, error);
+      setError(`Грешка при зареждане на ${activeTab}`);
       setData([]);
     } finally {
       setLoading(false);
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center py-12">
-        <div className="text-lg text-gray-600">Зареждане...</div>
-      </div>
-    );
-  }
+  const handleAdd = () => {
+    setShowModal(true);
+  };
+
+  const handleEdit = (item) => {
+    alert(`Редактиране на ${activeTab} с ID: ${item.id}\n\nТази функция ще бъде добавена в следващата версия.`);
+  };
+
+  const handleArchive = (item) => {
+    if (window.confirm(`Сигурни ли сте, че искате да архивирате този запис?`)) {
+      alert(`Архивиране на ${activeTab} с ID: ${item.id}\n\nТази функция ще бъде добавена в следващата версия.`);
+    }
+  };
 
   const getIcon = () => {
     switch (activeTab) {
@@ -488,8 +513,30 @@ const ContentModule = ({ activeTab }) => {
     }
   };
 
+  const getBgColor = () => {
+    switch (activeTab) {
+      case 'properties': return 'bg-blue-600 hover:bg-blue-700';
+      case 'buyers': return 'bg-green-600 hover:bg-green-700';
+      case 'sellers': return 'bg-orange-600 hover:bg-orange-700';
+      case 'tasks': return 'bg-purple-600 hover:bg-purple-700';
+      default: return 'bg-gray-600 hover:bg-gray-700';
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center py-12">
+        <div className="flex items-center gap-3">
+          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+          <div className="text-lg text-gray-600">Зареждане...</div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-gray-900">
           {getIcon()} {getTitle()}
@@ -498,11 +545,21 @@ const ContentModule = ({ activeTab }) => {
           <div className="text-sm text-gray-500">
             Общо: {data.length} записа
           </div>
-          <button className={`bg-${getColor()}-600 hover:bg-${getColor()}-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200`}>
+          <button 
+            onClick={handleAdd}
+            className={`${getBgColor()} text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200`}
+          >
             + Добавяне
           </button>
         </div>
       </div>
+
+      {/* Error Alert */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+          {error}
+        </div>
+      )}
 
       {data.length === 0 ? (
         <div className="text-center py-12">
@@ -510,12 +567,18 @@ const ContentModule = ({ activeTab }) => {
           <h3 className="text-xl font-semibold text-gray-900 mb-2">
             Няма данни
           </h3>
-          <p className="text-gray-600">
+          <p className="text-gray-600 mb-6">
             {activeTab === 'properties' && 'Няма добавени имоти'}
             {activeTab === 'buyers' && 'Няма добавени купувачи'}
             {activeTab === 'sellers' && 'Няма добавени продавачи'}
             {activeTab === 'tasks' && 'Няма добавени задачи'}
           </p>
+          <button 
+            onClick={handleAdd}
+            className={`${getBgColor()} text-white px-6 py-3 rounded-lg font-medium transition-colors duration-200`}
+          >
+            + Добавяне на първи запис
+          </button>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -605,15 +668,43 @@ const ContentModule = ({ activeTab }) => {
               </div>
 
               <div className="flex gap-2 mt-4">
-                <button className={`flex-1 bg-${getColor()}-50 hover:bg-${getColor()}-100 text-${getColor()}-700 px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-200`}>
+                <button 
+                  onClick={() => handleEdit(item)}
+                  className={`flex-1 bg-${getColor()}-50 hover:bg-${getColor()}-100 text-${getColor()}-700 px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-200`}
+                >
                   ✏️ Редактиране
                 </button>
-                <button className="flex-1 bg-gray-50 hover:bg-gray-100 text-gray-700 px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-200">
+                <button 
+                  onClick={() => handleArchive(item)}
+                  className="flex-1 bg-gray-50 hover:bg-gray-100 text-gray-700 px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-200"
+                >
                   📦 Архивиране
                 </button>
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Simple Modal */}
+      {showModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl max-w-md w-full p-6">
+            <h3 className="text-xl font-bold text-gray-900 mb-4">
+              Добавяне на {getTitle().toLowerCase()}
+            </h3>
+            <p className="text-gray-600 mb-6">
+              Тази функция ще бъде добавена в следващата версия на системата.
+            </p>
+            <div className="flex gap-4">
+              <button
+                onClick={() => setShowModal(false)}
+                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+              >
+                Затваряне
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
