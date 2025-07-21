@@ -1,8 +1,8 @@
 // frontend/src/App.jsx - Complete with Authentication
 import React, { useState, useEffect } from 'react';
-import { AuthProvider, useAuth } from './contexts/AuthContext';
-import ProtectedRoute from './components/ProtectedRoute';
-import UserManagement from './components/UserManagement';
+import { AuthProvider, useAuth } from './contexts/AuthContext.jsx';
+import ProtectedRoute from './components/ProtectedRoute.jsx';
+import UserManagement from './components/UserManagement.jsx';
 
 // Main CRM Component with Authentication
 const AuthenticatedCRM = () => {
