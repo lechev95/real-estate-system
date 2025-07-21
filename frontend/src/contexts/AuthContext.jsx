@@ -16,7 +16,7 @@ export const AuthProvider = ({ children }) => {
   const [token, setToken] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const API_BASE_URL = 'https://real-estate-crm-api-cwlr.onrender.com';
+  const API_BASE_URL = 'https://real-estate-crm-api-cwlr.onrender.com/api';
 
   // Check for stored token on app load
   useEffect(() => {
