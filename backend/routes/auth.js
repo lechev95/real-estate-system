@@ -1,14 +1,10 @@
-// backend/routes/auth.js - Authentication routes
+// backend/routes/auth.js - Fixed with shared database
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const sqlite3 = require('sqlite3').verbose();
 const router = express.Router();
 
 const JWT_SECRET = process.env.JWT_SECRET || 'myucons_secret_key_2025';
-
-// Database connection (use same as main server)
-const db = new sqlite3.Database(':memory:');
 
 // Helper functions
 const generateToken = (user) => {
@@ -59,6 +55,9 @@ router.post('/login', (req, res) => {
     return res.status(400).json({ error: 'Email and password are required' });
   }
 
+  // Use the shared database instance from app.locals
+  const db = req.app.locals.db;
+
   db.get(
     'SELECT * FROM users WHERE email = ? AND isActive = 1',
     [email.toLowerCase()],
@@ -99,6 +98,8 @@ router.post('/login', (req, res) => {
 
 // Get current user endpoint
 router.get('/me', authenticateToken, (req, res) => {
+  const db = req.app.locals.db;
+  
   db.get(
     'SELECT id, email, firstName, lastName, role, isActive, createdAt FROM users WHERE id = ?',
     [req.user.id],
@@ -127,6 +128,8 @@ router.put('/change-password', authenticateToken, (req, res) => {
   if (newPassword.length < 6) {
     return res.status(400).json({ error: 'New password must be at least 6 characters long' });
   }
+
+  const db = req.app.locals.db;
 
   db.get(
     'SELECT * FROM users WHERE id = ?',
@@ -175,6 +178,8 @@ router.put('/change-password', authenticateToken, (req, res) => {
 
 // Get all users (admin only)
 router.get('/users', authenticateToken, requireAdmin, (req, res) => {
+  const db = req.app.locals.db;
+  
   db.all(
     'SELECT id, email, firstName, lastName, role, isActive, createdAt FROM users ORDER BY createdAt DESC',
     (err, users) => {
@@ -201,6 +206,8 @@ router.post('/users', authenticateToken, requireAdmin, (req, res) => {
   if (!['admin', 'agent'].includes(role)) {
     return res.status(400).json({ error: 'Invalid role' });
   }
+
+  const db = req.app.locals.db;
 
   // Check if email already exists
   db.get(
@@ -261,6 +268,8 @@ router.put('/users/:id', authenticateToken, requireAdmin, (req, res) => {
     return res.status(400).json({ error: 'Invalid role' });
   }
 
+  const db = req.app.locals.db;
+
   db.run(
     'UPDATE users SET firstName = ?, lastName = ?, role = COALESCE(?, role), isActive = COALESCE(?, isActive) WHERE id = ?',
     [firstName, lastName, role, isActive, id],
@@ -299,6 +308,8 @@ router.put('/users/:id/reset-password', authenticateToken, requireAdmin, (req, r
     return res.status(400).json({ error: 'New password must be at least 6 characters long' });
   }
 
+  const db = req.app.locals.db;
+
   bcrypt.hash(newPassword, 10, (err, hashedPassword) => {
     if (err) {
       return res.status(500).json({ error: 'Internal server error' });
@@ -330,6 +341,8 @@ router.delete('/users/:id', authenticateToken, requireAdmin, (req, res) => {
   if (parseInt(id) === req.user.id) {
     return res.status(400).json({ error: 'Cannot delete your own account' });
   }
+
+  const db = req.app.locals.db;
 
   db.run(
     'DELETE FROM users WHERE id = ?',
