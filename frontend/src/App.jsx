@@ -33,7 +33,7 @@ const AuthenticatedCRM = () => {
   const [viewingArchive, setViewingArchive] = useState(false);
 
   // API Configuration with Authentication
-  const API_BASE_URL = 'https://real-estate-crm-api-cwlr.onrender.com/api';
+  const API_BASE_URL = 'https://real-estate-crm-api-cwlr.onrender.com';
   
   const getAuthHeaders = () => ({
     'Content-Type': 'application/json',
