@@ -3,7 +3,7 @@ import React, { createContext, useState, useContext, useEffect } from 'react';
 
 const AuthContext = createContext();
 
-// Правилният backend URL от Render dashboard
+// Правилният backend URL
 const API_BASE_URL = 'https://real-estate-crm-api-cwlr.onrender.com/api';
 
 export const useAuth = () => {
