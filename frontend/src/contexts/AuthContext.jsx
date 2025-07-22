@@ -1,14 +1,14 @@
 // frontend/src/contexts/AuthContext.jsx
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useState, useContext, useEffect } from 'react';
 
 const AuthContext = createContext();
 
-// API Configuration - Updated with correct backend URL
-const API_URL = 'https://real-estate-crm-api-cwlr.onrender.com/api';
+// Правилният backend URL от Render dashboard
+const API_BASE_URL = 'https://real-estate-crm-api-cwlr.onrender.com/api';
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (context === undefined) {
+  if (!context) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
@@ -17,183 +17,179 @@ export const useAuth = () => {
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [token, setToken] = useState(localStorage.getItem('token'));
 
-  // Check if user is logged in on app start
   useEffect(() => {
-    const token = localStorage.getItem('token');
     if (token) {
-      // Verify token with backend
-      fetch(`${API_URL}/auth/me`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
-      .then(response => response.json())
-      .then(data => {
-        if (data.user) {
-          setUser(data.user);
-        } else {
-          localStorage.removeItem('token');
-        }
-      })
-      .catch(error => {
-        console.error('Auth check failed:', error);
-        localStorage.removeItem('token');
-      })
-      .finally(() => {
-        setLoading(false);
-      });
+      validateToken();
     } else {
       setLoading(false);
     }
   }, []);
 
-  const login = async (email, password) => {
+  const apiCall = async (endpoint, options = {}) => {
     try {
-      setLoading(true);
-      setError('');
+      const url = `${API_BASE_URL}${endpoint}`;
+      const headers = {
+        'Content-Type': 'application/json',
+        ...options.headers,
+      };
 
-      const response = await fetch(`${API_URL}/auth/login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email, password }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Login failed');
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
       }
 
-      // Store token and user data
-      localStorage.setItem('token', data.token);
-      setUser(data.user);
-      
-      return { success: true };
+      console.log(`Making API call to: ${url}`);
+
+      const response = await fetch(url, {
+        ...options,
+        headers,
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          logout();
+          throw new Error('Session expired');
+        }
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      return await response.json();
     } catch (error) {
-      setError(error.message);
-      return { success: false, error: error.message };
+      console.error(`API Error for ${endpoint}:`, error);
+      throw error;
+    }
+  };
+
+  const validateToken = async () => {
+    try {
+      const data = await apiCall('/auth/me');
+      setUser(data.user);
+    } catch (error) {
+      console.error('Token validation failed:', error);
+      logout();
     } finally {
       setLoading(false);
     }
   };
 
-  const logout = () => {
-    localStorage.removeItem('token');
-    setUser(null);
-  };
-
-  const getAuthHeaders = () => {
-    const token = localStorage.getItem('token');
-    return {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`
-    };
-  };
-
-  // API helper functions
-  const apiCall = async (endpoint, options = {}) => {
-    const url = `${API_URL}${endpoint}`;
-    const config = {
-      headers: getAuthHeaders(),
-      ...options
-    };
-
+  const login = async (email, password) => {
     try {
-      const response = await fetch(url, config);
-      const data = await response.json();
+      const data = await apiCall('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ email, password }),
+      });
 
-      if (!response.ok) {
-        throw new Error(data.error || 'API request failed');
-      }
-
+      setToken(data.token);
+      setUser(data.user);
+      localStorage.setItem('token', data.token);
+      
       return data;
     } catch (error) {
-      console.error(`API call failed: ${endpoint}`, error);
       throw error;
     }
   };
 
+  const logout = () => {
+    setToken(null);
+    setUser(null);
+    localStorage.removeItem('token');
+  };
+
   // Properties API
   const getProperties = () => apiCall('/properties');
-  const createProperty = (propertyData) => apiCall('/properties', {
+  const createProperty = (data) => apiCall('/properties', {
     method: 'POST',
-    body: JSON.stringify(propertyData)
+    body: JSON.stringify(data),
   });
-  const updateProperty = (id, propertyData) => apiCall(`/properties/${id}`, {
+  const updateProperty = (id, data) => apiCall(`/properties/${id}`, {
     method: 'PUT',
-    body: JSON.stringify(propertyData)
+    body: JSON.stringify(data),
   });
   const deleteProperty = (id) => apiCall(`/properties/${id}`, {
-    method: 'DELETE'
+    method: 'DELETE',
+  });
+  const archiveProperty = (id) => apiCall(`/properties/${id}/archive`, {
+    method: 'PATCH',
+  });
+  const restoreProperty = (id) => apiCall(`/properties/${id}/restore`, {
+    method: 'PATCH',
   });
 
   // Buyers API
   const getBuyers = () => apiCall('/buyers');
-  const createBuyer = (buyerData) => apiCall('/buyers', {
+  const createBuyer = (data) => apiCall('/buyers', {
     method: 'POST',
-    body: JSON.stringify(buyerData)
+    body: JSON.stringify(data),
   });
-  const updateBuyer = (id, buyerData) => apiCall(`/buyers/${id}`, {
+  const updateBuyer = (id, data) => apiCall(`/buyers/${id}`, {
     method: 'PUT',
-    body: JSON.stringify(buyerData)
+    body: JSON.stringify(data),
   });
   const deleteBuyer = (id) => apiCall(`/buyers/${id}`, {
-    method: 'DELETE'
+    method: 'DELETE',
+  });
+  const archiveBuyer = (id) => apiCall(`/buyers/${id}/archive`, {
+    method: 'PATCH',
+  });
+  const restoreBuyer = (id) => apiCall(`/buyers/${id}/restore`, {
+    method: 'PATCH',
   });
 
   // Sellers API
   const getSellers = () => apiCall('/sellers');
-  const createSeller = (sellerData) => apiCall('/sellers', {
+  const createSeller = (data) => apiCall('/sellers', {
     method: 'POST',
-    body: JSON.stringify(sellerData)
+    body: JSON.stringify(data),
   });
-  const updateSeller = (id, sellerData) => apiCall(`/sellers/${id}`, {
+  const updateSeller = (id, data) => apiCall(`/sellers/${id}`, {
     method: 'PUT',
-    body: JSON.stringify(sellerData)
+    body: JSON.stringify(data),
   });
   const deleteSeller = (id) => apiCall(`/sellers/${id}`, {
-    method: 'DELETE'
+    method: 'DELETE',
+  });
+  const archiveSeller = (id) => apiCall(`/sellers/${id}/archive`, {
+    method: 'PATCH',
+  });
+  const restoreSeller = (id) => apiCall(`/sellers/${id}/restore`, {
+    method: 'PATCH',
   });
 
   // Tasks API
   const getTasks = () => apiCall('/tasks');
-  const createTask = (taskData) => apiCall('/tasks', {
+  const createTask = (data) => apiCall('/tasks', {
     method: 'POST',
-    body: JSON.stringify(taskData)
+    body: JSON.stringify(data),
   });
-  const updateTask = (id, taskData) => apiCall(`/tasks/${id}`, {
+  const updateTask = (id, data) => apiCall(`/tasks/${id}`, {
     method: 'PUT',
-    body: JSON.stringify(taskData)
+    body: JSON.stringify(data),
   });
   const deleteTask = (id) => apiCall(`/tasks/${id}`, {
-    method: 'DELETE'
+    method: 'DELETE',
   });
   const completeTask = (id) => apiCall(`/tasks/${id}/complete`, {
-    method: 'PUT'
+    method: 'PATCH',
   });
 
-  // Users API (Admin only)
-  const getUsers = () => apiCall('/auth/users');
-  const createUser = (userData) => apiCall('/auth/users', {
+  // Users API
+  const getUsers = () => apiCall('/users');
+  const createUser = (data) => apiCall('/users', {
     method: 'POST',
-    body: JSON.stringify(userData)
+    body: JSON.stringify(data),
   });
-  const updateUser = (id, userData) => apiCall(`/auth/users/${id}`, {
+  const updateUser = (id, data) => apiCall(`/users/${id}`, {
     method: 'PUT',
-    body: JSON.stringify(userData)
+    body: JSON.stringify(data),
   });
-  const deleteUser = (id) => apiCall(`/auth/users/${id}`, {
-    method: 'DELETE'
+  const deleteUser = (id) => apiCall(`/users/${id}`, {
+    method: 'DELETE',
   });
 
   const value = {
     user,
     loading,
-    error,
     login,
     logout,
     // Properties
@@ -201,32 +197,34 @@ export const AuthProvider = ({ children }) => {
     createProperty,
     updateProperty,
     deleteProperty,
+    archiveProperty,
+    restoreProperty,
     // Buyers
     getBuyers,
     createBuyer,
     updateBuyer,
     deleteBuyer,
+    archiveBuyer,
+    restoreBuyer,
     // Sellers
     getSellers,
     createSeller,
     updateSeller,
     deleteSeller,
+    archiveSeller,
+    restoreSeller,
     // Tasks
     getTasks,
     createTask,
     updateTask,
     deleteTask,
     completeTask,
-    // Users (Admin)
+    // Users
     getUsers,
     createUser,
     updateUser,
-    deleteUser
+    deleteUser,
   };
 
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
