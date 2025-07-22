@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext.jsx';
 
 const Sellers = () => {
-  const { getSellers, createSeller, updateSeller, deleteSeller } = useAuth();
+  const { getSellers, createSeller, updateSeller, deleteSeller, archiveSeller } = useAuth();
   const [sellers, setSellers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -14,8 +14,10 @@ const Sellers = () => {
     email: '',
     phone: '',
     propertyAddress: '',
+    propertyType: 'apartment',
     askingPrice: '',
     commission: '',
+    propertyDescription: '',
     notes: ''
   });
   const [error, setError] = useState('');
@@ -74,11 +76,24 @@ const Sellers = () => {
       email: seller.email || '',
       phone: seller.phone || '',
       propertyAddress: seller.propertyAddress || '',
+      propertyType: seller.propertyType || 'apartment',
       askingPrice: seller.askingPrice || '',
       commission: seller.commission || '',
+      propertyDescription: seller.propertyDescription || '',
       notes: seller.notes || ''
     });
     setShowModal(true);
+  };
+
+  const handleArchive = async (id) => {
+    if (window.confirm('Сигурни ли сте, че искате да архивирате този продавач?')) {
+      try {
+        await archiveSeller(id);
+        loadSellers();
+      } catch (error) {
+        setError(error.message);
+      }
+    }
   };
 
   const handleDelete = async (id) => {
@@ -99,19 +114,44 @@ const Sellers = () => {
       email: '',
       phone: '',
       propertyAddress: '',
+      propertyType: 'apartment',
       askingPrice: '',
       commission: '',
+      propertyDescription: '',
       notes: ''
     });
     setError('');
   };
 
   const formatPrice = (price) => {
+    if (!price) return 'Не е посочена';
     return new Intl.NumberFormat('bg-BG', {
       style: 'currency',
       currency: 'BGN',
       minimumFractionDigits: 0
     }).format(price);
+  };
+
+  const getPropertyTypeIcon = (type) => {
+    const icons = {
+      apartment: '🏢',
+      house: '🏠',
+      office: '🏢',
+      commercial: '🏪',
+      land: '🌍'
+    };
+    return icons[type] || '🏠';
+  };
+
+  const getPropertyTypeLabel = (type) => {
+    const labels = {
+      apartment: 'Апартамент',
+      house: 'Къща',
+      office: 'Офис',
+      commercial: 'Търговски',
+      land: 'Земя'
+    };
+    return labels[type] || 'Имот';
   };
 
   if (loading) {
@@ -187,21 +227,26 @@ const Sellers = () => {
                 )}
               </div>
 
-              {/* Property Address */}
+              {/* Property Info */}
               {seller.propertyAddress && (
                 <div className="mb-4 p-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-100">
-                  <div className="flex items-center gap-2">
-                    <span className="text-red-500">🏠</span>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-blue-600">{getPropertyTypeIcon(seller.propertyType)}</span>
                     <div>
-                      <div className="text-xs text-blue-600 font-medium">Адрес на имота</div>
+                      <div className="text-xs text-blue-600 font-medium">{getPropertyTypeLabel(seller.propertyType)}</div>
                       <div className="text-sm font-bold text-blue-700">{seller.propertyAddress}</div>
                     </div>
                   </div>
+                  {seller.propertyDescription && (
+                    <div className="text-xs text-blue-600 mt-2 line-clamp-2">
+                      {seller.propertyDescription}
+                    </div>
+                  )}
                 </div>
               )}
 
               {/* Asking Price */}
-              {seller.askingPrice && (
+              {seller.askingPrice && seller.askingPrice > 0 && (
                 <div className="mb-4 p-3 bg-gradient-to-r from-orange-50 to-amber-50 rounded-lg border border-orange-100">
                   <div className="text-sm text-orange-600 font-medium mb-1">Искана цена</div>
                   <div className="text-2xl font-bold bg-gradient-to-r from-orange-600 to-amber-600 bg-clip-text text-transparent">
@@ -211,10 +256,18 @@ const Sellers = () => {
               )}
 
               {/* Commission */}
-              {seller.commission && (
+              {seller.commission && seller.commission > 0 && (
                 <div className="mb-4 p-3 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg border border-green-100">
                   <div className="text-sm text-green-600 font-medium mb-1">Комисионна</div>
                   <div className="text-lg font-bold text-green-700">{seller.commission}%</div>
+                </div>
+              )}
+
+              {/* Notes */}
+              {seller.notes && (
+                <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+                  <div className="text-sm text-gray-600 font-medium mb-1">Бележки</div>
+                  <div className="text-sm text-gray-700 line-clamp-2">{seller.notes}</div>
                 </div>
               )}
 
@@ -227,10 +280,16 @@ const Sellers = () => {
                   ✏️ Редактиране
                 </button>
                 <button
-                  onClick={() => handleDelete(seller.id)}
-                  className="flex-1 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white px-4 py-2 rounded-lg font-medium transition-all duration-200 shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
+                  onClick={() => handleArchive(seller.id)}
+                  className="flex-1 bg-gradient-to-r from-gray-500 to-gray-600 hover:from-gray-600 hover:to-gray-700 text-white px-4 py-2 rounded-lg font-medium transition-all duration-200 shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
                 >
-                  🗑️ Изтриване
+                  📦 Архив
+                </button>
+                <button
+                  onClick={() => handleDelete(seller.id)}
+                  className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white px-4 py-2 rounded-lg font-medium transition-all duration-200 shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
+                >
+                  🗑️
                 </button>
               </div>
             </div>
@@ -264,6 +323,7 @@ const Sellers = () => {
             </div>
 
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
+              {/* Personal Info */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <input
                   type="text"
@@ -301,41 +361,72 @@ const Sellers = () => {
                 />
               </div>
 
-              <input
-                type="text"
-                value={formData.propertyAddress}
-                onChange={(e) => setFormData({ ...formData, propertyAddress: e.target.value })}
-                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-transparent"
-                placeholder="🏠 Адрес на имота *"
-                required
-              />
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Property Info */}
+              <div className="border-t pt-4">
+                <h4 className="text-lg font-semibold text-gray-800 mb-3">🏠 Информация за имота</h4>
+                
                 <input
-                  type="number"
-                  value={formData.askingPrice}
-                  onChange={(e) => setFormData({ ...formData, askingPrice: e.target.value })}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  placeholder="💰 Искана цена (лв.)"
+                  type="text"
+                  value={formData.propertyAddress}
+                  onChange={(e) => setFormData({ ...formData, propertyAddress: e.target.value })}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-transparent mb-4"
+                  placeholder="📍 Адрес на имота *"
+                  required
                 />
-                <input
-                  type="number"
-                  step="0.1"
-                  value={formData.commission}
-                  onChange={(e) => setFormData({ ...formData, commission: e.target.value })}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-                  placeholder="💼 Комисионна (%)"
-                  max="10"
-                  min="0"
+
+                <select
+                  value={formData.propertyType}
+                  onChange={(e) => setFormData({ ...formData, propertyType: e.target.value })}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent mb-4"
+                >
+                  <option value="apartment">🏢 Апартамент</option>
+                  <option value="house">🏠 Къща</option>
+                  <option value="office">🏢 Офис</option>
+                  <option value="commercial">🏪 Търговски обект</option>
+                  <option value="land">🌍 Земя</option>
+                </select>
+
+                <textarea
+                  value={formData.propertyDescription}
+                  onChange={(e) => setFormData({ ...formData, propertyDescription: e.target.value })}
+                  rows="3"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-gray-500 focus:border-transparent mb-4"
+                  placeholder="📝 Описание на имота (брой стаи, състояние, особености)"
                 />
               </div>
 
+              {/* Financial Info */}
+              <div className="border-t pt-4">
+                <h4 className="text-lg font-semibold text-gray-800 mb-3">💰 Финансова информация</h4>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <input
+                    type="number"
+                    value={formData.askingPrice}
+                    onChange={(e) => setFormData({ ...formData, askingPrice: e.target.value })}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    placeholder="💰 Искана цена (лв.)"
+                  />
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={formData.commission}
+                    onChange={(e) => setFormData({ ...formData, commission: e.target.value })}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                    placeholder="💼 Комисионна (%)"
+                    max="10"
+                    min="0"
+                  />
+                </div>
+              </div>
+
+              {/* Notes */}
               <textarea
                 value={formData.notes}
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                 rows="3"
                 className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-gray-500 focus:border-transparent"
-                placeholder="📝 Бележки"
+                placeholder="📝 Бележки (специални изисквания, предпочитания, etc.)"
               />
 
               <div className="flex gap-4 pt-4">
